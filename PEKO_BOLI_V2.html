@@ -834,7 +834,7 @@ if(!WEBAPP_URL.startsWith("http")){toast("ยังไม่ได้ตั้�
 const remaining=[];
 for(const payload of q){
 try{
-await fetch(WEBAPP_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+await fetch(WEBAPP_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)});
 }catch(err){
 remaining.push(payload);
 }
@@ -1057,7 +1057,7 @@ if(WEBAPP_URL.startsWith("http")){
 try{
 await fetch(WEBAPP_URL,{
 method:"POST",
-headers:{"Content-Type":"application/json"},
+headers:{"Content-Type":"text/plain;charset=utf-8"},
 body:JSON.stringify(payload)
 });
 setStatus(infoBox,ICON_OK+"<div>บันทึกสำเร็จ · "+type+"</div>","ok");
