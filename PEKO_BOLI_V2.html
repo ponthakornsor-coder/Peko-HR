@@ -452,6 +452,7 @@ button:active:not(:disabled){transform:scale(.98)}
 .id-card .stripe .role{font-size:10.5px;background:rgba(255,255,255,.2);padding:3px 8px;border-radius:999px}
 .id-card .body{padding:20px;text-align:center}
 .id-card .name{font-size:17px;font-weight:700;margin:4px 0 2px}
+.id-card .nickname{font-size:13px;color:var(--brand);margin-bottom:2px}
 .id-card .code{font-size:12.5px;color:var(--ink-soft);font-variant-numeric:tabular-nums;letter-spacing:.5px}
 .id-card .qr-box{
   margin:16px auto 4px;padding:12px;background:#fff;border:1px solid var(--line);
@@ -567,16 +568,11 @@ button:active:not(:disabled){transform:scale(.98)}
       <img id="card-avatar-img" class="avatar-lg" style="display:none">
       <div id="card-avatar-placeholder" class="avatar-placeholder">?</div>
       <div class="name" id="card-name">-</div>
+      <div class="nickname" id="card-nickname" style="display:none"></div>
       <div class="code" id="card-code">-</div>
       <div class="qr-box" id="card-qr"></div>
       <div class="qr-hint">แสดง QR นี้เพื่อยืนยันตัวตน</div>
     </div>
-  </div>
-  <div class="card" style="margin-top:14px">
-    <button class="btn-outline" onclick="switchUser()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
-      ล้างข้อมูลบัตรในเครื่องนี้
-    </button>
   </div>
 </div>
 
@@ -640,23 +636,11 @@ button:active:not(:disabled){transform:scale(.98)}
 <div id="booth" class="page">
   <div class="card">
     <h3>จัดบูธ</h3>
-    <p class="sub">สแกน QR บูธเพื่อยืนยันสถานที่ พร้อมถ่ายภาพหน้างาน</p>
+    <p class="sub">พิมพ์ชื่อ/สถานที่บูธที่กำลังจัด พร้อมถ่ายภาพหน้างาน</p>
 
     <div class="field">
-      <label>รหัสบูธ / สถานที่</label>
-      <div class="booth-box">
-        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.5 7-12a7 7 0 10-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg></div>
-        <div class="txt">
-          <div class="t1">บูธที่ตรวจพบ</div>
-          <div class="t2 empty" id="b-booth-label">ยังไม่ได้สแกน</div>
-        </div>
-        <button class="scan-btn" onclick="openScanner('b')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M21 14v3h-3M14 21h3"/></svg>
-          สแกน QR
-        </button>
-      </div>
-      <div class="manual-toggle" onclick="toggleManual('b')">พิมพ์รหัสบูธเอง (ถ้าไม่มี QR)</div>
-      <input id="b-booth-manual" type="text" placeholder="พิมพ์รหัส/ชื่อบูธ" style="display:none;margin-top:8px">
+      <label>ชื่อ / สถานที่บูธ</label>
+      <input id="b-booth-manual" type="text" placeholder="เช่น เซ็นทรัลเวิลด์ ชั้น 1">
     </div>
 
     <div class="field">
@@ -856,21 +840,17 @@ function identityFromURL(){
 const params=new URLSearchParams(window.location.search);
 const emp=params.get("emp");
 const name=params.get("name");
+const nickname=params.get("nickname")||"";
+const photo=params.get("photo")||"";
 if(emp && name){
-return {code:emp,name:name,photo:"",createdAt:new Date().toISOString()};
+return {code:emp,name:name,nickname:nickname,photo:photo,createdAt:new Date().toISOString()};
 }
 return null;
 }
 
-function switchUser(){
-if(!confirm("ต้องการล้างข้อมูลบัตรพนักงานในเครื่องนี้หรือไม่? ครั้งต่อไปต้องเปิดลิงก์เฉพาะตัวใหม่จากผู้ดูแลระบบ"))return;
-localStorage.removeItem(PROFILE_KEY);
-boot();
-}
-
 function renderProfileUI(profile){
 // header chip
-document.getElementById("chipName").textContent=profile.name;
+document.getElementById("chipName").textContent=profile.nickname||profile.name;
 if(profile.photo){
 document.getElementById("chipAvatarImg").src=profile.photo;
 document.getElementById("chipAvatarImg").style.display="block";
@@ -880,6 +860,9 @@ document.getElementById("chipAvatarPlaceholder").textContent=profile.name.charAt
 }
 // card page
 document.getElementById("card-name").textContent=profile.name;
+const nickEl=document.getElementById("card-nickname");
+if(profile.nickname){nickEl.textContent="ชื่อเล่น: "+profile.nickname;nickEl.style.display="block";}
+else{nickEl.style.display="none";}
 document.getElementById("card-code").textContent=profile.code;
 if(profile.photo){
 document.getElementById("card-avatar-img").src=profile.photo;
@@ -923,6 +906,15 @@ document.getElementById("appRoot").style.display="none";
 /* ---------------- Booth code (manual + QR) ---------------- */
 const boothState={a:null,b:null};
 
+// หน้า "จัดบูธ" ไม่ต้องสแกน QR ให้พิมพ์ชื่อ/สถานที่บูธได้เลย
+(function initBoothManualB(){
+const input=document.getElementById("b-booth-manual");
+if(!input)return;
+input.oninput=()=>{
+boothState.b=input.value.trim()?{code:input.value.trim(),name:input.value.trim(),manual:true}:null;
+};
+})();
+
 function toggleManual(prefix){
 const input=document.getElementById(prefix+"-booth-manual");
 input.style.display=input.style.display==="none"?"block":"none";
@@ -937,6 +929,7 @@ updateBoothLabel(prefix);
 
 function updateBoothLabel(prefix){
 const label=document.getElementById(prefix+"-booth-label");
+if(!label)return;
 const st=boothState[prefix];
 if(st){
 label.textContent=st.name+(st.manual?" (พิมพ์เอง)":"");
@@ -951,7 +944,9 @@ function resetBooth(prefix){
 boothState[prefix]=null;
 updateBoothLabel(prefix);
 const manual=document.getElementById(prefix+"-booth-manual");
-manual.value="";manual.style.display="none";
+if(!manual)return;
+manual.value="";
+if(prefix!=="b")manual.style.display="none";
 }
 
 /* ---------------- QR Scanner (camera) ---------------- */
@@ -1019,7 +1014,8 @@ if(!profile){toast("กรุณาลงทะเบียนบัตรพน
 
 const fileInput=document.getElementById(prefix+"f");
 const file=fileInput.files[0];
-if(!file){toast("กรุณาถ่ายรูป","err");return;}
+const photoRequired=(type!=="Leave");
+if(photoRequired && !file){toast("กรุณาถ่ายรูป","err");return;}
 
 const infoBox=document.getElementById(prefix+"info");
 setButtons(prefix,true);
@@ -1027,8 +1023,11 @@ setStatus(infoBox,ICON_PIN+"<div>กำลังอ่านตำแหน่�
 
 try{
 const pos=await getPosition();
+let imageDataUrl="";
+if(file){
 setStatus(infoBox,ICON_PIN+"<div>กำลังประมวลผลรูปภาพ...</div>");
-const imageDataUrl=await compressImage(file,MAX_DIMENSION);
+imageDataUrl=await compressImage(file,MAX_DIMENSION);
+}
 
 const t=new Date().toISOString();
 const acc=Math.round(pos.coords.accuracy);
@@ -1036,6 +1035,7 @@ const booth=boothState[prefix];
 const payload={
 type:type,
 name:profile.name,
+nickname:profile.nickname||"",
 employee_code:profile.code,
 booth_code:booth?booth.code:"",
 booth_name:booth?booth.name:"",
