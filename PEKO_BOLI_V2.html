@@ -344,7 +344,7 @@ header{
   display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);
   margin-bottom:6px;letter-spacing:.2px;
 }
-input[type=text],input[type=date]{
+input[type=text],input[type=date],input[type=time]{
   width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:11px;
   font-size:14.5px;color:var(--ink);background:#f8fafc;transition:.15s;
   font-family:inherit;
@@ -625,6 +625,16 @@ button:active:not(:disabled){transform:scale(.98)}
       <div class="hint" style="margin-top:6px;color:#94a3b8;font-size:11.5px">ถ้าลาวันเดียว กรอกแค่ช่องแรกก็พอ</div>
     </div>
 
+    <div class="field">
+      <label>ช่วงเวลาที่ลา (ถ้าลาไม่เต็มวัน เช่น ครึ่งวัน/บางชั่วโมง)</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="a-leave-time-from" type="time" style="flex:1">
+        <span style="color:var(--ink-soft);font-size:12.5px">ถึง</span>
+        <input id="a-leave-time-to" type="time" style="flex:1">
+      </div>
+      <div class="hint" style="margin-top:6px;color:#94a3b8;font-size:11.5px">ลาเต็มวันไม่ต้องกรอก ใช้ได้เฉพาะตอนลาวันเดียวเท่านั้น</div>
+    </div>
+
     <div class="btn-group">
       <button id="abtn1" class="btn-primary" onclick="save('Check In','a')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>
@@ -808,8 +818,12 @@ zone.querySelector(".hint").textContent="รองรับกล้องหล
 if(!opts.keepBooth) resetBooth(prefix);
 const leaveFrom=document.getElementById(prefix+"-leave-from");
 const leaveTo=document.getElementById(prefix+"-leave-to");
+const leaveTimeFrom=document.getElementById(prefix+"-leave-time-from");
+const leaveTimeTo=document.getElementById(prefix+"-leave-time-to");
 if(leaveFrom)leaveFrom.value="";
 if(leaveTo)leaveTo.value="";
+if(leaveTimeFrom)leaveTimeFrom.value="";
+if(leaveTimeTo)leaveTimeTo.value="";
 }
 
 /* ---------------- Offline queue ---------------- */
@@ -1083,14 +1097,20 @@ const infoBox=document.getElementById(prefix+"info");
 if(type==="Leave"){
 const fromInput=document.getElementById(prefix+"-leave-from");
 const toInput=document.getElementById(prefix+"-leave-to");
+const timeFromInput=document.getElementById(prefix+"-leave-time-from");
+const timeToInput=document.getElementById(prefix+"-leave-time-to");
 const leaveFrom=fromInput?fromInput.value:"";
 const leaveTo=toInput?toInput.value:"";
+const leaveTimeFrom=timeFromInput?timeFromInput.value:"";
+const leaveTimeTo=timeToInput?timeToInput.value:"";
 if(!leaveFrom){toast("กรุณาเลือกวันที่ลา","err");if(fromInput)fromInput.focus();return;}
 
 const todayD=new Date();
 const todayStr=todayD.getFullYear()+"-"+String(todayD.getMonth()+1).padStart(2,"0")+"-"+String(todayD.getDate()).padStart(2,"0");
 if(leaveFrom<todayStr){toast("ไม่สามารถแจ้งลาย้อนหลังได้ กรุณาเลือกวันนี้หรือวันถัดไป","err");if(fromInput)fromInput.focus();return;}
 if(leaveTo && leaveTo<leaveFrom){toast("วันที่สิ้นสุดต้องไม่มาก่อนวันที่เริ่มลา","err");if(toInput)toInput.focus();return;}
+if((leaveTimeFrom||leaveTimeTo) && leaveTo && leaveTo!==leaveFrom){toast("ระบุช่วงเวลาได้เฉพาะตอนลาวันเดียวเท่านั้น (ถ้าลาหลายวัน ให้เว้นช่วงเวลาไว้)","err");return;}
+if(leaveTimeFrom && leaveTimeTo && leaveTimeTo<=leaveTimeFrom){toast("เวลาสิ้นสุดต้องมากกว่าเวลาเริ่มลา","err");if(timeToInput)timeToInput.focus();return;}
 
 setButtons(prefix,true);
 setStatus(infoBox,ICON_PIN+"<div>กำลังบันทึกการแจ้งลา...</div>");
@@ -1108,10 +1128,13 @@ lng:"",
 accuracy_m:"",
 image:"",
 leave_date:leaveFrom,
-leave_date_to:leaveTo||leaveFrom
+leave_date_to:leaveTo||leaveFrom,
+leave_time_from:leaveTimeFrom,
+leave_time_to:leaveTimeTo
 };
 
-const dateLabel=(leaveTo && leaveTo!==leaveFrom)?(leaveFrom+" ถึง "+leaveTo):leaveFrom;
+let dateLabel=(leaveTo && leaveTo!==leaveFrom)?(leaveFrom+" ถึง "+leaveTo):leaveFrom;
+if(leaveTimeFrom||leaveTimeTo){dateLabel+=" ("+(leaveTimeFrom||"?")+"-"+(leaveTimeTo||"?")+" น.)";}
 
 try{
 if(WEBAPP_URL.startsWith("http")){
@@ -1186,13 +1209,12 @@ body:JSON.stringify(payload)
 });
 setStatus(infoBox,ICON_OK+"<div>บันทึกสำเร็จ · "+type+"</div>","ok");
 toast("บันทึก "+type+" สำเร็จ","ok");
-if(type==="Check In") saveCurrentBooth(boothState[prefix]);
-if(type==="Check Out") saveCurrentBooth(null);
-clearForm(prefix,{keepBooth:type!=="Check Out"});
+// จำบูธไว้เสมอ (ไม่ล้างตอนออกงาน) เผื่อ "จัดบูธ" ทำหลังออกงานก็ยังอ้างอิงบูธล่าสุดได้
+if(prefix==="a" && boothState[prefix]) saveCurrentBooth(boothState[prefix]);
+clearForm(prefix,{keepBooth:true});
 }catch(err){
 queuePayload(payload);
-if(type==="Check In") saveCurrentBooth(boothState[prefix]);
-if(type==="Check Out") saveCurrentBooth(null);
+if(prefix==="a" && boothState[prefix]) saveCurrentBooth(boothState[prefix]);
 setStatus(infoBox,ICON_ERR+"<div>ส่งไม่สำเร็จ ข้อมูลถูกเก็บไว้ในเครื่องเพื่อลองส่งใหม่</div>","err");
 toast("เครือข่ายมีปัญหา บันทึกไว้ในเครื่องแล้ว","err");
 }
