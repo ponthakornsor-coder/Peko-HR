@@ -344,12 +344,12 @@ header{
   display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);
   margin-bottom:6px;letter-spacing:.2px;
 }
-input[type=text]{
+input[type=text],input[type=date]{
   width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:11px;
   font-size:14.5px;color:var(--ink);background:#f8fafc;transition:.15s;
   font-family:inherit;
 }
-input[type=text]:focus{outline:none;border-color:var(--brand);background:#fff;box-shadow:0 0 0 3px rgba(15,118,110,.12)}
+input[type=text]:focus,input[type=date]:focus{outline:none;border-color:var(--brand);background:#fff;box-shadow:0 0 0 3px rgba(15,118,110,.12)}
 input[type=text]::placeholder{color:#94a3b8}
 
 .upload-zone{
@@ -615,6 +615,16 @@ button:active:not(:disabled){transform:scale(.98)}
       <div>ยังไม่อ่านตำแหน่ง GPS</div>
     </div>
 
+    <div class="field">
+      <label>วันที่ลา (ใช้เฉพาะตอนกด "แจ้งลา")</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="a-leave-from" type="date" style="flex:1">
+        <span style="color:var(--ink-soft);font-size:12.5px">ถึง</span>
+        <input id="a-leave-to" type="date" style="flex:1">
+      </div>
+      <div class="hint" style="margin-top:6px;color:#94a3b8;font-size:11.5px">ถ้าลาวันเดียว กรอกแค่ช่องแรกก็พอ</div>
+    </div>
+
     <div class="btn-group">
       <button id="abtn1" class="btn-primary" onclick="save('Check In','a')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>
@@ -641,6 +651,7 @@ button:active:not(:disabled){transform:scale(.98)}
     <div class="field">
       <label>ชื่อ / สถานที่บูธ</label>
       <input id="b-booth-manual" type="text" placeholder="เช่น เซ็นทรัลเวิลด์ ชั้น 1">
+      <div class="hint" style="margin-top:6px;color:#94a3b8;font-size:11.5px">ดึงชื่อบูธจากตอนเข้างานให้อัตโนมัติ แก้ไขได้ถ้าต้องการ</div>
     </div>
 
     <div class="field">
@@ -687,6 +698,7 @@ button:active:not(:disabled){transform:scale(.98)}
 const WEBAPP_URL="https://script.google.com/macros/s/AKfycbyOVyP24BouLVJT9qf5VyClpwL7lLZfjqY8QX6rzuvrFDvRKroA5spvHfpaRaPBmGUPEg/exec";
 const QUEUE_KEY="peko_boli_pending_queue";
 const PROFILE_KEY="peko_boli_profile";
+const CURRENT_BOOTH_KEY="peko_boli_current_booth"; // จำบูธที่เช็คอินไว้ ใช้ต่อตอนออกงาน/จัดบูธ โดยไม่ต้องสแกนซ้ำ
 const MAX_DIMENSION=1000; // ลดขนาดรูปสูงสุด (px ด้านยาว) สำหรับรูปถ่ายยืนยัน
 const AVATAR_DIMENSION=300; // ลดขนาดรูปโปรไฟล์
 const JPEG_QUALITY=0.7;
@@ -713,6 +725,7 @@ document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));
 document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
 document.getElementById(id).classList.add("active");
 if(e) e.classList.add("active");
+if(id==="booth") prefillBoothSetup();
 }
 
 /* ---------------- File → preview binding ---------------- */
@@ -781,7 +794,8 @@ box.className="status-panel"+(cls?(" "+cls):"");
 box.innerHTML=html;
 }
 
-function clearForm(prefix){
+function clearForm(prefix,opts){
+opts=opts||{};
 const fileInput=document.getElementById(prefix+"f");
 const img=document.getElementById(prefix+"i");
 const zone=document.getElementById(prefix+"-zone");
@@ -791,7 +805,11 @@ img.src="";
 zone.classList.remove("has-image");
 zone.querySelector(".label").textContent="แตะเพื่อถ่ายรูป";
 zone.querySelector(".hint").textContent="รองรับกล้องหลังของอุปกรณ์";
-resetBooth(prefix);
+if(!opts.keepBooth) resetBooth(prefix);
+const leaveFrom=document.getElementById(prefix+"-leave-from");
+const leaveTo=document.getElementById(prefix+"-leave-to");
+if(leaveFrom)leaveFrom.value="";
+if(leaveTo)leaveTo.value="";
 }
 
 /* ---------------- Offline queue ---------------- */
@@ -897,23 +915,69 @@ if(profile){
 document.getElementById("regScreen").style.display="none";
 document.getElementById("appRoot").style.display="block";
 renderProfileUI(profile);
+// ถ้าเช็คอินค้างอยู่ (ยังไม่ออกงาน) ให้จำบูธเดิมไว้ใช้ต่อ ไม่ต้องสแกนใหม่
+const cur=loadCurrentBooth();
+if(cur){boothState.a=cur;updateBoothLabel("a");}
+prefillBoothSetup();
+initLeaveDateMin();
 }else{
 document.getElementById("regScreen").style.display="flex";
 document.getElementById("appRoot").style.display="none";
 }
 }
 
+// ห้ามเลือกวันที่ลาย้อนหลัง
+function initLeaveDateMin(){
+const today=new Date();
+const y=today.getFullYear(),m=String(today.getMonth()+1).padStart(2,"0"),d=String(today.getDate()).padStart(2,"0");
+const todayStr=y+"-"+m+"-"+d;
+const from=document.getElementById("a-leave-from");
+const to=document.getElementById("a-leave-to");
+if(from)from.min=todayStr;
+if(to)to.min=todayStr;
+}
+
 /* ---------------- Booth code (manual + QR) ---------------- */
 const boothState={a:null,b:null};
+
+// จำบูธที่เช็คอินไว้ล่าสุด (persist ข้ามหน้า/ปิดแอป) เพื่อใช้ตอนออกงาน/จัดบูธ โดยไม่ต้องสแกนซ้ำ
+function saveCurrentBooth(booth){
+if(booth) localStorage.setItem(CURRENT_BOOTH_KEY,JSON.stringify(booth));
+else localStorage.removeItem(CURRENT_BOOTH_KEY);
+}
+function loadCurrentBooth(){
+try{ return JSON.parse(localStorage.getItem(CURRENT_BOOTH_KEY)); }catch(e){ return null; }
+}
+
+// รองรับทั้งข้อความชื่อบูธล้วนๆ และข้อความดิบจาก QR แบบ "BOOTH:รหัส:ชื่อ"
+// (เผื่อพนักงานพิมพ์/วางข้อความที่สแกนได้ลงในช่องกรอกเองแทนการสแกนตรง)
+function parseBoothText(text){
+const trimmed=(text||"").trim();
+const m=trimmed.match(/^BOOTH:([^:]+):?(.*)$/);
+if(m)return {code:m[1],name:m[2]||m[1]};
+return {code:trimmed,name:trimmed};
+}
 
 // หน้า "จัดบูธ" ไม่ต้องสแกน QR ให้พิมพ์ชื่อ/สถานที่บูธได้เลย
 (function initBoothManualB(){
 const input=document.getElementById("b-booth-manual");
 if(!input)return;
 input.oninput=()=>{
-boothState.b=input.value.trim()?{code:input.value.trim(),name:input.value.trim(),manual:true}:null;
+if(!input.value.trim()){boothState.b=null;return;}
+const parsed=parseBoothText(input.value);
+boothState.b={code:parsed.code,name:parsed.name,manual:true};
 };
 })();
+
+// เติมชื่อบูธในหน้า "จัดบูธ" อัตโนมัติจากบูธที่เช็คอินไว้ (ไม่ต้องพิมพ์/สแกนใหม่)
+function prefillBoothSetup(){
+const cur=loadCurrentBooth();
+const input=document.getElementById("b-booth-manual");
+if(cur && input && !input.value.trim()){
+input.value=cur.name;
+boothState.b={code:cur.code,name:cur.name,manual:false};
+}
+}
 
 function toggleManual(prefix){
 const input=document.getElementById(prefix+"-booth-manual");
@@ -921,7 +985,8 @@ input.style.display=input.style.display==="none"?"block":"none";
 if(input.style.display==="block")input.focus();
 input.oninput=()=>{
 if(input.value.trim()){
-boothState[prefix]={code:input.value.trim(),name:input.value.trim(),manual:true};
+const parsed=parseBoothText(input.value);
+boothState[prefix]={code:parsed.code,name:parsed.name,manual:true};
 updateBoothLabel(prefix);
 }
 };
@@ -1012,12 +1077,71 @@ async function save(type,prefix){
 const profile=getProfile();
 if(!profile){toast("กรุณาลงทะเบียนบัตรพนักงานก่อน","err");boot();return;}
 
+const infoBox=document.getElementById(prefix+"info");
+
+// ---- แจ้งลา: ไม่ต้องถ่ายรูป ไม่ต้องอ่าน GPS แค่เลือกวันที่ลา ----
+if(type==="Leave"){
+const fromInput=document.getElementById(prefix+"-leave-from");
+const toInput=document.getElementById(prefix+"-leave-to");
+const leaveFrom=fromInput?fromInput.value:"";
+const leaveTo=toInput?toInput.value:"";
+if(!leaveFrom){toast("กรุณาเลือกวันที่ลา","err");if(fromInput)fromInput.focus();return;}
+
+const todayD=new Date();
+const todayStr=todayD.getFullYear()+"-"+String(todayD.getMonth()+1).padStart(2,"0")+"-"+String(todayD.getDate()).padStart(2,"0");
+if(leaveFrom<todayStr){toast("ไม่สามารถแจ้งลาย้อนหลังได้ กรุณาเลือกวันนี้หรือวันถัดไป","err");if(fromInput)fromInput.focus();return;}
+if(leaveTo && leaveTo<leaveFrom){toast("วันที่สิ้นสุดต้องไม่มาก่อนวันที่เริ่มลา","err");if(toInput)toInput.focus();return;}
+
+setButtons(prefix,true);
+setStatus(infoBox,ICON_PIN+"<div>กำลังบันทึกการแจ้งลา...</div>");
+
+const payload={
+type:type,
+name:profile.name,
+nickname:profile.nickname||"",
+employee_code:profile.code,
+booth_code:"",
+booth_name:"",
+time:new Date().toISOString(),
+lat:"",
+lng:"",
+accuracy_m:"",
+image:"",
+leave_date:leaveFrom,
+leave_date_to:leaveTo||leaveFrom
+};
+
+const dateLabel=(leaveTo && leaveTo!==leaveFrom)?(leaveFrom+" ถึง "+leaveTo):leaveFrom;
+
+try{
+if(WEBAPP_URL.startsWith("http")){
+await fetch(WEBAPP_URL,{
+method:"POST",
+headers:{"Content-Type":"text/plain;charset=utf-8"},
+body:JSON.stringify(payload)
+});
+setStatus(infoBox,ICON_OK+"<div>แจ้งลาสำเร็จ · วันที่ "+dateLabel+"</div>","ok");
+toast("แจ้งลาสำเร็จ ("+dateLabel+")","ok");
+clearForm(prefix,{keepBooth:true});
+}else{
+console.log(payload);
+toast("Demo: ยังไม่ได้ใส่ Apps Script URL","err");
+}
+}catch(err){
+queuePayload(payload);
+setStatus(infoBox,ICON_ERR+"<div>ส่งไม่สำเร็จ ข้อมูลถูกเก็บไว้ในเครื่องเพื่อลองส่งใหม่</div>","err");
+toast("เครือข่ายมีปัญหา บันทึกไว้ในเครื่องแล้ว","err");
+}finally{
+setButtons(prefix,false);
+}
+return;
+}
+
+// ---- Check In / Check Out / จัดบูธ: ต้องถ่ายรูป(ยกเว้นแจ้งลา) + อ่าน GPS ----
 const fileInput=document.getElementById(prefix+"f");
 const file=fileInput.files[0];
-const photoRequired=(type!=="Leave");
-if(photoRequired && !file){toast("กรุณาถ่ายรูป","err");return;}
+if(!file){toast("กรุณาถ่ายรูป","err");return;}
 
-const infoBox=document.getElementById(prefix+"info");
 setButtons(prefix,true);
 setStatus(infoBox,ICON_PIN+"<div>กำลังอ่านตำแหน่ง GPS...</div>");
 
@@ -1062,9 +1186,13 @@ body:JSON.stringify(payload)
 });
 setStatus(infoBox,ICON_OK+"<div>บันทึกสำเร็จ · "+type+"</div>","ok");
 toast("บันทึก "+type+" สำเร็จ","ok");
-clearForm(prefix);
+if(type==="Check In") saveCurrentBooth(boothState[prefix]);
+if(type==="Check Out") saveCurrentBooth(null);
+clearForm(prefix,{keepBooth:type!=="Check Out"});
 }catch(err){
 queuePayload(payload);
+if(type==="Check In") saveCurrentBooth(boothState[prefix]);
+if(type==="Check Out") saveCurrentBooth(null);
 setStatus(infoBox,ICON_ERR+"<div>ส่งไม่สำเร็จ ข้อมูลถูกเก็บไว้ในเครื่องเพื่อลองส่งใหม่</div>","err");
 toast("เครือข่ายมีปัญหา บันทึกไว้ในเครื่องแล้ว","err");
 }
