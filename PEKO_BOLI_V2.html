@@ -522,6 +522,29 @@ button:active:not(:disabled){transform:scale(.98)}
   </div>
 </div>
 
+<!-- ============ BLOCKED SCREEN (ลิงก์นี้ถูกผูกกับเครื่องอื่นไปแล้ว) ============ -->
+<div id="blockedScreen" style="display:none">
+  <header>
+    <div class="brand-row">
+      <div class="brand-mark">PB</div>
+      <div class="brand-text">
+        <h1>PEKO &amp; BOLI</h1>
+        <p>ระบบลงเวลาและจัดบูธภาคสนาม</p>
+      </div>
+    </div>
+  </header>
+  <div class="tabs" style="visibility:hidden;height:0;margin:0;padding:0"></div>
+  <div class="page active">
+    <div class="card" style="text-align:center">
+      <div class="avatar-placeholder" style="margin:0 auto 16px;background:var(--danger-bg);color:var(--danger)">
+        <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+      </div>
+      <h3>ลิงก์นี้ถูกใช้งานจากเครื่องอื่นไปแล้ว</h3>
+      <p class="sub">บัตรพนักงานนี้ผูกกับมือถือเครื่องแรกที่เปิดลิงก์ไว้แล้ว หากเปลี่ยนมือถือใหม่ กรุณาติดต่อผู้ดูแลระบบให้ปลดล็อกอุปกรณ์เดิมก่อน แล้วค่อยเปิดลิงก์นี้อีกครั้ง</p>
+    </div>
+  </div>
+</div>
+
 <!-- ============ MAIN APP ============ -->
 <div class="container" id="appRoot" style="display:none">
 
@@ -709,6 +732,16 @@ const WEBAPP_URL="https://script.google.com/macros/s/AKfycbyOVyP24BouLVJT9qf5VyC
 const QUEUE_KEY="peko_boli_pending_queue";
 const PROFILE_KEY="peko_boli_profile";
 const CURRENT_BOOTH_KEY="peko_boli_current_booth"; // จำบูธที่เช็คอินไว้ ใช้ต่อตอนออกงาน/จัดบูธ โดยไม่ต้องสแกนซ้ำ
+const DEVICE_ID_KEY="peko_boli_device_id"; // รหัสประจำเครื่องนี้ (สุ่มครั้งเดียว) ใช้ผูกบัตรพนักงานกับเครื่องแรกที่เปิดลิงก์
+
+function getDeviceId(){
+let id=localStorage.getItem(DEVICE_ID_KEY);
+if(!id){
+id=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():("dev-"+Date.now()+"-"+Math.random().toString(36).slice(2));
+localStorage.setItem(DEVICE_ID_KEY,id);
+}
+return id;
+}
 const MAX_DIMENSION=1000; // ลดขนาดรูปสูงสุด (px ด้านยาว) สำหรับรูปถ่ายยืนยัน
 const AVATAR_DIMENSION=300; // ลดขนาดรูปโปรไฟล์
 const JPEG_QUALITY=0.7;
@@ -912,16 +945,37 @@ qrBox.textContent="ไม่สามารถโหลดตัวสร้า�
 }
 }
 
-function boot(){
+async function boot(){
 // ลิงก์เฉพาะตัวจากผู้ดูแลระบบมาก่อนเสมอ (เผื่อแอดมินส่งลิงก์ใหม่ให้ เช่น เปลี่ยนรหัสพนักงาน)
 const fromUrl=identityFromURL();
 if(fromUrl){
-localStorage.setItem(PROFILE_KEY,JSON.stringify(fromUrl));
-// ลบพารามิเตอร์ออกจาก URL ที่แสดงผล เพื่อความเรียบร้อย (ข้อมูลถูกจำไว้ในเครื่องแล้ว)
+// ลบพารามิเตอร์ออกจาก URL ที่แสดงผล เพื่อความเรียบร้อย (เก็บค่าไว้ในตัวแปรแล้ว ไม่ต้องพึ่ง URL อีก)
 try{
 const cleanUrl=window.location.origin+window.location.pathname;
 window.history.replaceState({},"",cleanUrl);
 }catch(e){}
+
+// กันคนอื่นเอาลิงก์นี้ไปเปิดในเครื่องตัวเองแล้วลงเวลาแทน: ผูกบัตรกับเครื่องแรกที่เปิดลิงก์นี้เท่านั้น
+if(WEBAPP_URL.startsWith("http")){
+try{
+const res=await fetch(WEBAPP_URL,{
+method:"POST",
+headers:{"Content-Type":"text/plain;charset=utf-8"},
+body:JSON.stringify({action:"claim_device",employee_code:fromUrl.code,device_id:getDeviceId()})
+});
+const result=await res.json();
+if(result && result.status==="device_mismatch"){
+document.getElementById("regScreen").style.display="none";
+document.getElementById("appRoot").style.display="none";
+document.getElementById("blockedScreen").style.display="flex";
+return;
+}
+}catch(e){
+// เช็คไม่ได้เพราะเน็ตมีปัญหา ณ ตอนเปิดครั้งแรก - ปล่อยผ่านไปก่อนดีกว่าบล็อกพนักงานไม่ให้ทำงานทั้งวัน
+}
+}
+
+localStorage.setItem(PROFILE_KEY,JSON.stringify(fromUrl));
 }
 
 const profile=getProfile();
