@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>สรุปข้อมูลลงเวลา - PEKO & BOLI (สำหรับ HR)</title>
+<style>
+:root{--brand:#0f766e;--brand-dark:#0b5a54;--ink:#0f172a;--ink-soft:#475569;--line:#e2e8f0;--bg:#f1f5f9}
+*{box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink)}
+.wrap{max-width:1100px;margin:0 auto;padding:24px 16px 60px}
+header{background:linear-gradient(135deg,var(--brand),var(--brand-dark));color:#fff;padding:20px;border-radius:16px;margin-bottom:20px}
+header h1{margin:0;font-size:18px}
+header p{margin:4px 0 0;font-size:13px;color:rgba(255,255,255,.8)}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px -12px rgba(15,23,42,.12);margin-bottom:16px}
+label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px}
+.hint{font-size:11.5px;color:#94a3b8;margin:-8px 0 14px}
+.row{display:flex;gap:14px;flex-wrap:wrap}
+.row>div{flex:1;min-width:160px}
+input[type=text],input[type=date],input[type=password]{width:100%;padding:11px 13px;border:1.5px solid var(--line);border-radius:10px;font-size:14px;margin-bottom:14px;font-family:inherit}
+input:focus{outline:none;border-color:var(--brand)}
+button{padding:12px 18px;border:none;border-radius:10px;background:var(--brand);color:#fff;font-weight:700;font-size:14px;cursor:pointer}
+button.secondary{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
+.btn-row{display:flex;gap:10px;flex-wrap:wrap}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{background:#f8fafc;position:sticky;top:0;font-size:12px;color:var(--ink-soft)}
+tr:hover td{background:#f8fafc}
+.tbl-wrap{overflow:auto;max-height:600px;border:1px solid var(--line);border-radius:10px}
+.empty-state{padding:40px;text-align:center;color:#94a3b8;font-size:13px}
+.status-msg{font-size:12.5px;margin-top:-8px;margin-bottom:14px}
+.status-msg.err{color:#b91c1c}
+.status-msg.ok{color:#0f766e}
+a.imglink{color:var(--brand)}
+.summary-bar{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:16px;font-size:13px;color:var(--ink-soft)}
+.summary-bar b{color:var(--ink);font-size:15px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>สรุปข้อมูลลงเวลา / จัดบูธ (สำหรับ HR)</h1>
+  <p>ดึงข้อมูลดิบจาก Google Sheet มาแสดงเรียงตามพนักงาน/วันที่ ไม่คำนวณค่าแรงให้ — ใช้กรอง/ส่งออก CSV เพื่อคิดเงินต่อเองได้</p>
+</header>
+
+<div class="card">
+  <div class="row">
+    <div>
+      <label>URL Web App (Apps Script)</label>
+      <input id="webappUrl" type="text" placeholder="https://script.google.com/macros/s/.../exec">
+    </div>
+    <div>
+      <label>รหัสผ่าน HR (ADMIN_KEY ใน Code.gs)</label>
+      <input id="adminKey" type="password" placeholder="รหัสผ่านที่ตั้งไว้ใน Code.gs">
+    </div>
+  </div>
+  <div class="btn-row">
+    <button onclick="loadData()">โหลดข้อมูล</button>
+  </div>
+  <div id="loadMsg" class="status-msg"></div>
+</div>
+
+<div class="card" id="filterCard" style="display:none">
+  <div class="row">
+    <div>
+      <label>ค้นหาชื่อ/ชื่อเล่น/รหัสพนักงาน</label>
+      <input id="fSearch" type="text" placeholder="พิมพ์เพื่อกรอง" oninput="renderTable()">
+    </div>
+    <div>
+      <label>ตั้งแต่วันที่</label>
+      <input id="fFrom" type="date" oninput="renderTable()">
+    </div>
+    <div>
+      <label>ถึงวันที่</label>
+      <input id="fTo" type="date" oninput="renderTable()">
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="secondary" id="viewRawBtn" onclick="setView('raw')">รายการดิบ</button>
+    <button class="secondary" id="viewDailyBtn" onclick="setView('daily')">สรุปรายวัน (เข้า-ออก-ชั่วโมง)</button>
+    <button class="secondary" onclick="exportCSV()">ส่งออก CSV (ตามที่กรองอยู่ + มุมมองปัจจุบัน)</button>
+  </div>
+</div>
+
+<div class="card" id="resultCard" style="display:none">
+  <div class="summary-bar" id="summaryBar"></div>
+
+  <div class="tbl-wrap" id="rawWrap">
+    <table>
+      <thead>
+        <tr>
+          <th>วันที่-เวลา</th><th>ประเภท</th><th>ชื่อ</th><th>ชื่อเล่น</th><th>รหัสพนักงาน</th>
+          <th>บูธ</th><th>พิกัด GPS</th><th>ความแม่นยำ(ม.)</th><th>รูปภาพ</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="tbl-wrap" id="dailyWrap" style="display:none">
+    <table>
+      <thead>
+        <tr>
+          <th>วันที่</th><th>ชื่อ</th><th>ชื่อเล่น</th><th>รหัสพนักงาน</th>
+          <th>เข้างาน</th><th>ออกงาน</th><th>รวมชั่วโมง</th><th>บูธที่เกี่ยวข้อง</th><th>สถานะ</th>
+        </tr>
+      </thead>
+      <tbody id="dailyTbody"></tbody>
+    </table>
+  </div>
+
+  <div class="card" id="totalsCard" style="margin-top:16px;box-shadow:none;border-style:dashed">
+    <label style="margin-bottom:10px">สรุปรวมต่อพนักงาน (ตามช่วงที่กรองอยู่)</label>
+    <div class="tbl-wrap" style="max-height:300px">
+      <table>
+        <thead><tr><th>ชื่อ</th><th>ชื่อเล่น</th><th>รหัสพนักงาน</th><th>จำนวนวันที่มาทำงาน</th><th>รวมชั่วโมงทั้งหมด</th><th>จำนวนวันลา</th></tr></thead>
+        <tbody id="totalsTbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+const URLKEY="peko_boli_hr_webapp_url";
+const KEYKEY="peko_boli_hr_admin_key";
+document.getElementById("webappUrl").value=localStorage.getItem(URLKEY)||"";
+document.getElementById("adminKey").value=localStorage.getItem(KEYKEY)||"";
+
+let allRows=[];
+let currentView="raw";
+
+function setView(v){
+currentView=v;
+document.getElementById("rawWrap").style.display=(v==="raw")?"block":"none";
+document.getElementById("dailyWrap").style.display=(v==="daily")?"block":"none";
+document.getElementById("viewRawBtn").style.background=(v==="raw")?"var(--brand)":"#fff";
+document.getElementById("viewRawBtn").style.color=(v==="raw")?"#fff":"var(--ink)";
+document.getElementById("viewDailyBtn").style.background=(v==="daily")?"var(--brand)":"#fff";
+document.getElementById("viewDailyBtn").style.color=(v==="daily")?"#fff":"var(--ink)";
+renderTable();
+}
+
+async function loadData(){
+const url=document.getElementById("webappUrl").value.trim();
+const key=document.getElementById("adminKey").value.trim();
+const msg=document.getElementById("loadMsg");
+if(!url){msg.textContent="กรุณากรอก URL Web App";msg.className="status-msg err";return;}
+localStorage.setItem(URLKEY,url);
+localStorage.setItem(KEYKEY,key);
+msg.textContent="กำลังโหลดข้อมูล...";msg.className="status-msg";
+try{
+const sep=url.includes("?")?"&":"?";
+const res=await fetch(url+sep+"action=list&key="+encodeURIComponent(key));
+const data=await res.json();
+if(data.result!=="success"){
+msg.textContent="โหลดไม่สำเร็จ: "+(data.message||"ไม่ทราบสาเหตุ");
+msg.className="status-msg err";
+return;
+}
+allRows=data.rows||[];
+msg.textContent="โหลดสำเร็จ "+allRows.length+" รายการ";
+msg.className="status-msg ok";
+document.getElementById("filterCard").style.display="block";
+document.getElementById("resultCard").style.display="block";
+setView("raw");
+}catch(err){
+msg.textContent="เกิดข้อผิดพลาด: "+err.message+" (ตรวจสอบ URL และการเชื่อมต่ออินเทอร์เน็ต)";
+msg.className="status-msg err";
+}
+}
+
+function rowDate(r){
+// ใช้เวลาจากเครื่องผู้ใช้ (time) ถ้ามี ไม่งั้นใช้เวลาเซิร์ฟเวอร์
+const t=r.time||r.server_time;
+const d=new Date(t);
+return isNaN(d)?null:d;
+}
+
+function renderTable(){
+const search=document.getElementById("fSearch").value.trim().toLowerCase();
+const from=document.getElementById("fFrom").value;
+const to=document.getElementById("fTo").value;
+
+let rows=allRows.filter(r=>{
+if(search){
+const hay=((r.name||"")+" "+(r.nickname||"")+" "+(r.employee_code||"")).toLowerCase();
+if(!hay.includes(search))return false;
+}
+const d=rowDate(r);
+if(from && d){
+if(d < new Date(from+"T00:00:00"))return false;
+}
+if(to && d){
+if(d > new Date(to+"T23:59:59"))return false;
+}
+return true;
+});
+
+// เรียงตามชื่อพนักงานก่อน แล้วตามวันเวลา
+rows.sort((a,b)=>{
+const nameA=(a.name||"")+"|"+(a.employee_code||"");
+const nameB=(b.name||"")+"|"+(b.employee_code||"");
+if(nameA!==nameB)return nameA<nameB?-1:1;
+const da=rowDate(a),db=rowDate(b);
+if(!da||!db)return 0;
+return da-db;
+});
+
+renderRawTable(rows);
+const dayEntries=computeDailySummary(rows);
+renderDailySummary(dayEntries);
+renderTotals(dayEntries);
+
+const uniqueEmp=new Set(rows.map(r=>r.employee_code||r.name)).size;
+document.getElementById("summaryBar").innerHTML=
+"<div>รายการดิบทั้งหมด: <b>"+rows.length+"</b></div>"
++"<div>จำนวนพนักงานที่พบ: <b>"+uniqueEmp+"</b></div>"
++"<div>จำนวนวัน-คนที่มีข้อมูล: <b>"+dayEntries.length+"</b></div>";
+
+window._filteredRows=rows;
+window._dayEntries=dayEntries;
+}
+
+function renderRawTable(rows){
+const tbody=document.getElementById("tbody");
+tbody.innerHTML="";
+if(rows.length===0){
+tbody.innerHTML="<tr><td colspan='9'><div class='empty-state'>ไม่พบข้อมูลตามเงื่อนไขที่กรอง</div></td></tr>";
+return;
+}
+rows.forEach(r=>{
+const d=rowDate(r);
+const dateTxt=d?d.toLocaleString("th-TH"):(r.time||"");
+const gps=(r.lat&&r.lng)?(Number(r.lat).toFixed(5)+", "+Number(r.lng).toFixed(5)):"-";
+const booth=r.booth_name||r.booth_code||"-";
+const img=r.image_url?("<a class='imglink' href='"+r.image_url+"' target='_blank'>ดูรูป</a>"):"-";
+const tr=document.createElement("tr");
+tr.innerHTML="<td>"+dateTxt+"</td><td>"+(r.type||"")+"</td><td>"+(r.name||"")+"</td><td>"+(r.nickname||"-")+"</td>"
++"<td>"+(r.employee_code||"")+"</td><td>"+booth+"</td><td>"+gps+"</td><td>"+(r.accuracy_m||"")+"</td><td>"+img+"</td>";
+tbody.appendChild(tr);
+});
+}
+
+function localDateKey(d){
+// yyyy-mm-dd ตามเวลาเครื่อง (ไม่ใช้ UTC) เพื่อจัดกลุ่มตามวันจริง
+const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0");
+return y+"-"+m+"-"+day;
+}
+
+function addDaysToDateStr(dateStr,n){
+const d=new Date(dateStr+"T00:00:00");
+d.setDate(d.getDate()+n);
+return localDateKey(d);
+}
+
+function formatHours(hoursFloat){
+if(hoursFloat==null||isNaN(hoursFloat))return "-";
+const totalMin=Math.round(hoursFloat*60);
+const h=Math.floor(totalMin/60),m=totalMin%60;
+return h+"."+String(m).padStart(2,"0")+" ชม.";
+}
+
+// บอกว่าลาเต็มวันหรือลาแค่บางช่วงเวลา (กี่โมงถึงกี่โมง รวมกี่ชั่วโมง)
+function timeRangeHours(a,b){
+const pa=a.split(":").map(Number),pb=b.split(":").map(Number);
+if(pa.length<2||pb.length<2||isNaN(pa[0])||isNaN(pb[0]))return null;
+return ((pb[0]*60+pb[1])-(pa[0]*60+pa[1]))/60;
+}
+function leaveDetailLabel(e){
+if(!e.isLeave)return "-";
+if(e.leaveTimeFrom||e.leaveTimeTo){
+const dur=(e.leaveTimeFrom&&e.leaveTimeTo)?timeRangeHours(e.leaveTimeFrom,e.leaveTimeTo):null;
+return "ลา ("+(e.leaveTimeFrom||"?")+"-"+(e.leaveTimeTo||"?")+(dur!=null?(" · "+formatHours(dur)):"")+")";
+}
+return "ลาเต็มวัน";
+}
+
+// รวมข้อมูลดิบเป็นรายวันต่อพนักงาน: เข้างาน/ออกงาน/รวมชั่วโมง/บูธ/สถานะลา
+function computeDailySummary(rows){
+const map={}; // key: code|date
+
+function getEntry(code,date,name,nickname){
+const key=code+"|"+date;
+if(!map[key]){
+map[key]={employee_code:code,date:date,name:name,nickname:nickname,checkIn:null,checkOut:null,booths:new Set(),isLeave:false,leaveTimeFrom:"",leaveTimeTo:""};
+}
+return map[key];
+}
+
+rows.forEach(r=>{
+const d=rowDate(r);
+if(!d)return;
+const code=r.employee_code||r.name||"-";
+const date=localDateKey(d);
+if(r.type==="Check In"||r.type==="Check Out"||r.type==="Booth Setup"){
+const entry=getEntry(code,date,r.name,r.nickname);
+if(r.type==="Check In"){
+if(!entry.checkIn||d<entry.checkIn)entry.checkIn=d;
+}else if(r.type==="Check Out"){
+if(!entry.checkOut||d>entry.checkOut)entry.checkOut=d;
+}
+const boothLabel=r.booth_name||r.booth_code;
+if(boothLabel)entry.booths.add(boothLabel);
+}
+});
+
+// ขยายวันลาจาก leave_date ถึง leave_date_to ใส่เป็นรายวัน
+rows.forEach(r=>{
+if(r.type!=="Leave")return;
+const code=r.employee_code||r.name||"-";
+let cur=r.leave_date||"";
+const end=r.leave_date_to||r.leave_date||"";
+if(!cur)return;
+let guard=0;
+while(cur && cur<=end && guard<366){
+const entry=getEntry(code,cur,r.name,r.nickname);
+entry.isLeave=true;
+if(r.leave_time_from||r.leave_time_to){
+entry.leaveTimeFrom=r.leave_time_from||"";
+entry.leaveTimeTo=r.leave_time_to||"";
+}
+if(cur===end)break;
+cur=addDaysToDateStr(cur,1);
+guard++;
+}
+});
+
+const list=Object.values(map);
+list.sort((a,b)=>{
+const nameA=(a.name||"")+"|"+a.employee_code, nameB=(b.name||"")+"|"+b.employee_code;
+if(nameA!==nameB)return nameA<nameB?-1:1;
+return a.date<b.date?-1:(a.date>b.date?1:0);
+});
+return list;
+}
+
+function renderDailySummary(list){
+const tbody=document.getElementById("dailyTbody");
+tbody.innerHTML="";
+if(list.length===0){
+tbody.innerHTML="<tr><td colspan='9'><div class='empty-state'>ไม่พบข้อมูลตามเงื่อนไขที่กรอง</div></td></tr>";
+return;
+}
+list.forEach(e=>{
+let hours=null;
+if(e.checkIn&&e.checkOut&&e.checkOut>e.checkIn){
+hours=(e.checkOut-e.checkIn)/3600000;
+}
+let status="-";
+if(e.isLeave)status=leaveDetailLabel(e);
+else if(e.checkIn&&!e.checkOut)status="ยังไม่ออกงาน";
+else if(e.checkIn&&e.checkOut)status="ปกติ";
+const tr=document.createElement("tr");
+tr.innerHTML="<td>"+e.date+"</td><td>"+(e.name||"")+"</td><td>"+(e.nickname||"-")+"</td><td>"+e.employee_code+"</td>"
++"<td>"+(e.checkIn?e.checkIn.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-")+"</td>"
++"<td>"+(e.checkOut?e.checkOut.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-")+"</td>"
++"<td>"+(e.isLeave?"-":formatHours(hours))+"</td>"
++"<td>"+(e.booths.size?Array.from(e.booths).join(", "):"-")+"</td>"
++"<td>"+status+"</td>";
+tbody.appendChild(tr);
+});
+}
+
+function renderTotals(list){
+const totals={}; // key: code
+list.forEach(e=>{
+const key=e.employee_code;
+if(!totals[key])totals[key]={name:e.name,nickname:e.nickname,employee_code:e.employee_code,days:0,hours:0,leaveDays:0};
+if(e.isLeave){totals[key].leaveDays++;return;}
+if(e.checkIn&&e.checkOut&&e.checkOut>e.checkIn){
+totals[key].days++;
+totals[key].hours+=(e.checkOut-e.checkIn)/3600000;
+}else if(e.checkIn){
+totals[key].days++;
+}
+});
+const tbody=document.getElementById("totalsTbody");
+tbody.innerHTML="";
+const arr=Object.values(totals).sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+if(arr.length===0){
+tbody.innerHTML="<tr><td colspan='6'><div class='empty-state'>ไม่มีข้อมูล</div></td></tr>";
+return;
+}
+arr.forEach(t=>{
+const tr=document.createElement("tr");
+tr.innerHTML="<td>"+(t.name||"")+"</td><td>"+(t.nickname||"-")+"</td><td>"+t.employee_code+"</td>"
++"<td>"+t.days+"</td><td>"+formatHours(t.hours)+"</td><td>"+t.leaveDays+"</td>";
+tbody.appendChild(tr);
+});
+}
+
+function exportCSV(){
+if(currentView==="daily"){
+exportDailyCSV();
+return;
+}
+const rows=window._filteredRows||[];
+if(rows.length===0){alert("ไม่มีข้อมูลให้ส่งออก");return;}
+const headers=["วันที่-เวลา","ประเภท","ชื่อ","ชื่อเล่น","รหัสพนักงาน","บูธ","ละติจูด","ลองจิจูด","ความแม่นยำ(ม.)","ลิงก์รูปภาพ"];
+const lines=[headers.join(",")];
+rows.forEach(r=>{
+const d=rowDate(r);
+const dateTxt=d?d.toLocaleString("th-TH"):(r.time||"");
+const cells=[dateTxt,r.type||"",r.name||"",r.nickname||"",r.employee_code||"",r.booth_name||r.booth_code||"",r.lat||"",r.lng||"",r.accuracy_m||"",r.image_url||""];
+lines.push(cells.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(","));
+});
+downloadCSV(lines.join("\r\n"),"peko_boli_raw_");
+}
+
+function exportDailyCSV(){
+const list=window._dayEntries||[];
+if(list.length===0){alert("ไม่มีข้อมูลให้ส่งออก");return;}
+const headers=["วันที่","ชื่อ","ชื่อเล่น","รหัสพนักงาน","เข้างาน","ออกงาน","รวมชั่วโมง","บูธ","สถานะ"];
+const lines=[headers.join(",")];
+list.forEach(e=>{
+let hours=null;
+if(e.checkIn&&e.checkOut&&e.checkOut>e.checkIn)hours=(e.checkOut-e.checkIn)/3600000;
+let status=e.isLeave?leaveDetailLabel(e):(e.checkIn&&!e.checkOut?"ยังไม่ออกงาน":(e.checkIn&&e.checkOut?"ปกติ":"-"));
+const cells=[e.date,e.name||"",e.nickname||"",e.employee_code,
+e.checkIn?e.checkIn.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-",
+e.checkOut?e.checkOut.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-",
+e.isLeave?"-":formatHours(hours),
+e.booths.size?Array.from(e.booths).join(" / "):"-",
+status];
+lines.push(cells.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(","));
+});
+downloadCSV(lines.join("\r\n"),"peko_boli_daily_summary_");
+}
+
+function downloadCSV(csvBody,filenamePrefix){
+const csv="﻿"+csvBody;
+const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+const a=document.createElement("a");
+a.href=URL.createObjectURL(blob);
+a.download=filenamePrefix+new Date().toISOString().slice(0,10)+".csv";
+a.click();
+}
+</script>
+</body>
+</html>
