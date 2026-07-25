@@ -78,7 +78,19 @@ a.imglink{color:var(--brand)}
   <div class="btn-row">
     <button class="secondary" id="viewRawBtn" onclick="setView('raw')">รายการดิบ</button>
     <button class="secondary" id="viewDailyBtn" onclick="setView('daily')">สรุปรายวัน (เข้า-ออก-ชั่วโมง)</button>
+    <button class="secondary" id="viewDetailBtn" onclick="setView('detail')">รายงานละเอียด (GPS+เวลา)</button>
     <button class="secondary" onclick="exportCSV()">ส่งออก CSV (ตามที่กรองอยู่ + มุมมองปัจจุบัน)</button>
+  </div>
+</div>
+
+<div class="card" id="boothLocCard" style="display:none">
+  <label style="margin-bottom:4px">ตั้งค่าตำแหน่ง GPS จริงของแต่ละบูธ</label>
+  <div class="hint" style="margin-top:0">ใช้เทียบกับ GPS ตอนเช็คอิน เพื่อคำนวณคอลัมน์ "สถานะ GPS" ในรายงานละเอียด — กรอกละติจูด/ลองจิจูดจริงของบูธแล้วกดบันทึกทีละบูธ</div>
+  <div class="tbl-wrap" style="max-height:320px">
+    <table>
+      <thead><tr><th>รหัสบูธ</th><th>ชื่อบูธ</th><th>ละติจูด</th><th>ลองจิจูด</th><th>รัศมีที่ยอมรับ(ม.)</th><th></th></tr></thead>
+      <tbody id="boothLocTbody"></tbody>
+    </table>
   </div>
 </div>
 
@@ -109,6 +121,19 @@ a.imglink{color:var(--brand)}
     </table>
   </div>
 
+  <div class="tbl-wrap" id="detailWrap" style="display:none">
+    <table>
+      <thead>
+        <tr>
+          <th>วันที่</th><th>ชื่อ</th><th>ชื่อเล่น</th><th>รหัสพนักงาน</th><th>บูธ</th>
+          <th>GPS</th><th>ความแม่นยำ(ม.)</th><th>สถานะ GPS เทียบบูธ</th>
+          <th>เวลา Check In</th><th>เวลา Check Out</th><th>เวลารวมทำงาน</th><th>เวลาจัดบูธ</th>
+        </tr>
+      </thead>
+      <tbody id="detailTbody"></tbody>
+    </table>
+  </div>
+
   <div class="card" id="totalsCard" style="margin-top:16px;box-shadow:none;border-style:dashed">
     <label style="margin-bottom:10px">สรุปรวมต่อพนักงาน (ตามช่วงที่กรองอยู่)</label>
     <div class="tbl-wrap" style="max-height:300px">
@@ -129,15 +154,21 @@ document.getElementById("adminKey").value=localStorage.getItem(KEYKEY)||"";
 
 let allRows=[];
 let currentView="raw";
+let boothLocations={};
 
 function setView(v){
 currentView=v;
 document.getElementById("rawWrap").style.display=(v==="raw")?"block":"none";
 document.getElementById("dailyWrap").style.display=(v==="daily")?"block":"none";
-document.getElementById("viewRawBtn").style.background=(v==="raw")?"var(--brand)":"#fff";
-document.getElementById("viewRawBtn").style.color=(v==="raw")?"#fff":"var(--ink)";
-document.getElementById("viewDailyBtn").style.background=(v==="daily")?"var(--brand)":"#fff";
-document.getElementById("viewDailyBtn").style.color=(v==="daily")?"#fff":"var(--ink)";
+document.getElementById("detailWrap").style.display=(v==="detail")?"block":"none";
+document.getElementById("boothLocCard").style.display=(v==="detail")?"block":"none";
+["viewRawBtn","viewDailyBtn","viewDetailBtn"].forEach(function(id){
+const active=(id==="viewRawBtn"&&v==="raw")||(id==="viewDailyBtn"&&v==="daily")||(id==="viewDetailBtn"&&v==="detail");
+const btn=document.getElementById(id);
+btn.style.background=active?"var(--brand)":"#fff";
+btn.style.color=active?"#fff":"var(--ink)";
+});
+if(v==="detail")renderBoothLocationEditor();
 renderTable();
 }
 
@@ -163,6 +194,11 @@ msg.textContent="โหลดสำเร็จ "+allRows.length+" รายก�
 msg.className="status-msg ok";
 document.getElementById("filterCard").style.display="block";
 document.getElementById("resultCard").style.display="block";
+try{
+const locRes=await fetch(url+sep+"action=list_booth_locations&key="+encodeURIComponent(key));
+const locData=await locRes.json();
+if(locData.result==="success")boothLocations=locData.locations||{};
+}catch(e){}
 setView("raw");
 }catch(err){
 msg.textContent="เกิดข้อผิดพลาด: "+err.message+" (ตรวจสอบ URL และการเชื่อมต่ออินเทอร์เน็ต)";
@@ -210,6 +246,7 @@ return da-db;
 renderRawTable(rows);
 const dayEntries=computeDailySummary(rows);
 renderDailySummary(dayEntries);
+renderDetailReport(dayEntries);
 renderTotals(dayEntries);
 
 const uniqueEmp=new Set(rows.map(r=>r.employee_code||r.name)).size;
@@ -240,6 +277,59 @@ tr.innerHTML="<td>"+dateTxt+"</td><td>"+(r.type||"")+"</td><td>"+(r.name||"")+"<
 +"<td>"+(r.employee_code||"")+"</td><td>"+booth+"</td><td>"+gps+"</td><td>"+(r.accuracy_m||"")+"</td><td>"+img+"</td>";
 tbody.appendChild(tr);
 });
+}
+
+// รวมรายชื่อบูธที่พบในข้อมูล (ไม่ซ้ำ) มาให้แอดมินตั้งค่าพิกัดจริง
+function collectKnownBooths(){
+const map={};
+allRows.forEach(function(r){
+const code=r.booth_code||"";
+if(!code)return;
+if(!map[code])map[code]={code:code,name:r.booth_name||code};
+});
+return Object.values(map).sort((a,b)=>a.code.localeCompare(b.code));
+}
+
+function renderBoothLocationEditor(){
+const tbody=document.getElementById("boothLocTbody");
+const booths=collectKnownBooths();
+tbody.innerHTML="";
+if(booths.length===0){
+tbody.innerHTML="<tr><td colspan='6'><div class='empty-state'>ยังไม่พบบูธในข้อมูล</div></td></tr>";
+return;
+}
+booths.forEach(function(b){
+const existing=boothLocations[b.code]||{};
+const tr=document.createElement("tr");
+tr.innerHTML="<td>"+b.code+"</td><td>"+b.name+"</td>"
++"<td><input type='text' id='loc-lat-"+b.code+"' value='"+(existing.lat!=null&&!isNaN(existing.lat)?existing.lat:"")+"' style='width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:6px' placeholder='13.7563'></td>"
++"<td><input type='text' id='loc-lng-"+b.code+"' value='"+(existing.lng!=null&&!isNaN(existing.lng)?existing.lng:"")+"' style='width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:6px' placeholder='100.5018'></td>"
++"<td><input type='text' id='loc-radius-"+b.code+"' value='"+(existing.radius_m||150)+"' style='width:70px;padding:6px 8px;border:1px solid var(--line);border-radius:6px'></td>"
++"<td><button class='small' onclick='saveBoothLocation(\""+b.code.replace(/"/g,'\\"')+"\",\""+b.name.replace(/"/g,'\\"')+"\")'>บันทึก</button></td>";
+tbody.appendChild(tr);
+});
+}
+
+async function saveBoothLocation(code,name){
+const url=document.getElementById("webappUrl").value.trim();
+const key=document.getElementById("adminKey").value.trim();
+const lat=parseFloat(document.getElementById("loc-lat-"+code).value);
+const lng=parseFloat(document.getElementById("loc-lng-"+code).value);
+const radius=parseFloat(document.getElementById("loc-radius-"+code).value)||150;
+if(isNaN(lat)||isNaN(lng)){alert("กรุณากรอกละติจูด/ลองจิจูดเป็นตัวเลข");return;}
+try{
+const res=await fetch(url,{
+method:"POST",
+headers:{"Content-Type":"text/plain;charset=utf-8"},
+body:JSON.stringify({action:"set_booth_location",key:key,booth_code:code,booth_name:name,lat:lat,lng:lng,radius_m:radius})
+});
+const data=await res.json();
+if(data.result!=="success")throw new Error(data.message||"บันทึกไม่สำเร็จ");
+boothLocations[code]={name:name,lat:lat,lng:lng,radius_m:radius};
+alert("บันทึกตำแหน่งบูธ \""+name+"\" แล้ว — กด \"โหลดข้อมูล\" อีกครั้งเพื่อให้สถานะ GPS อัปเดตตามตำแหน่งใหม่");
+}catch(e){
+alert("บันทึกไม่สำเร็จ: "+e.message);
+}
 }
 
 function localDateKey(d){
@@ -283,7 +373,8 @@ const map={}; // key: code|date
 function getEntry(code,date,name,nickname){
 const key=code+"|"+date;
 if(!map[key]){
-map[key]={employee_code:code,date:date,name:name,nickname:nickname,checkIn:null,checkOut:null,booths:new Set(),isLeave:false,leaveTimeFrom:"",leaveTimeTo:""};
+map[key]={employee_code:code,date:date,name:name,nickname:nickname,checkIn:null,checkOut:null,booths:new Set(),isLeave:false,leaveTimeFrom:"",leaveTimeTo:"",
+checkInLat:null,checkInLng:null,checkInAccuracy:null,checkInGpsStatus:"-",checkInBooth:"",boothSetupTime:null};
 }
 return map[key];
 }
@@ -296,9 +387,18 @@ const date=localDateKey(d);
 if(r.type==="Check In"||r.type==="Check Out"||r.type==="Booth Setup"){
 const entry=getEntry(code,date,r.name,r.nickname);
 if(r.type==="Check In"){
-if(!entry.checkIn||d<entry.checkIn)entry.checkIn=d;
+if(!entry.checkIn||d<entry.checkIn){
+entry.checkIn=d;
+entry.checkInLat=r.lat||null;
+entry.checkInLng=r.lng||null;
+entry.checkInAccuracy=r.accuracy_m||null;
+entry.checkInGpsStatus=r.gps_status||"-";
+entry.checkInBooth=r.booth_name||r.booth_code||"";
+}
 }else if(r.type==="Check Out"){
 if(!entry.checkOut||d>entry.checkOut)entry.checkOut=d;
+}else if(r.type==="Booth Setup"){
+if(!entry.boothSetupTime||d<entry.boothSetupTime)entry.boothSetupTime=d;
 }
 const boothLabel=r.booth_name||r.booth_code;
 if(boothLabel)entry.booths.add(boothLabel);
@@ -362,6 +462,34 @@ tbody.appendChild(tr);
 });
 }
 
+const GPS_STATUS_COLOR={"ปกติ":"#0f766e","ตรวจสอบ":"#b45309","ผิดปกติ":"#b91c1c","ยังไม่ได้ตั้งค่า":"#94a3b8","-":"#94a3b8"};
+
+function renderDetailReport(list){
+const tbody=document.getElementById("detailTbody");
+tbody.innerHTML="";
+if(list.length===0){
+tbody.innerHTML="<tr><td colspan='12'><div class='empty-state'>ไม่พบข้อมูลตามเงื่อนไขที่กรอง</div></td></tr>";
+return;
+}
+list.forEach(e=>{
+let hours=null;
+if(e.checkIn&&e.checkOut&&e.checkOut>e.checkIn)hours=(e.checkOut-e.checkIn)/3600000;
+const gps=(e.checkInLat&&e.checkInLng)?(Number(e.checkInLat).toFixed(5)+", "+Number(e.checkInLng).toFixed(5)):"-";
+const statusColor=GPS_STATUS_COLOR[e.checkInGpsStatus]||"#94a3b8";
+const tr=document.createElement("tr");
+tr.innerHTML="<td>"+e.date+"</td><td>"+(e.name||"")+"</td><td>"+(e.nickname||"-")+"</td><td>"+e.employee_code+"</td>"
++"<td>"+(e.checkInBooth||(e.booths.size?Array.from(e.booths).join(", "):"-"))+"</td>"
++"<td>"+gps+"</td>"
++"<td>"+(e.checkInAccuracy||"-")+"</td>"
++"<td><span style='color:"+statusColor+";font-weight:600'>"+e.checkInGpsStatus+"</span></td>"
++"<td>"+(e.checkIn?e.checkIn.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-")+"</td>"
++"<td>"+(e.checkOut?e.checkOut.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-")+"</td>"
++"<td>"+(e.isLeave?"-":formatHours(hours))+"</td>"
++"<td>"+(e.boothSetupTime?e.boothSetupTime.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-")+"</td>";
+tbody.appendChild(tr);
+});
+}
+
 function renderTotals(list){
 const totals={}; // key: code
 list.forEach(e=>{
@@ -395,6 +523,10 @@ if(currentView==="daily"){
 exportDailyCSV();
 return;
 }
+if(currentView==="detail"){
+exportDetailCSV();
+return;
+}
 const rows=window._filteredRows||[];
 if(rows.length===0){alert("ไม่มีข้อมูลให้ส่งออก");return;}
 const headers=["วันที่-เวลา","ประเภท","ชื่อ","ชื่อเล่น","รหัสพนักงาน","บูธ","ละติจูด","ลองจิจูด","ความแม่นยำ(ม.)","ลิงก์รูปภาพ"];
@@ -426,6 +558,27 @@ status];
 lines.push(cells.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(","));
 });
 downloadCSV(lines.join("\r\n"),"peko_boli_daily_summary_");
+}
+
+function exportDetailCSV(){
+const list=window._dayEntries||[];
+if(list.length===0){alert("ไม่มีข้อมูลให้ส่งออก");return;}
+const headers=["วันที่","ชื่อ","ชื่อเล่น","รหัสพนักงาน","บูธ","GPS","ความแม่นยำ(ม.)","สถานะ GPS เทียบบูธ","เวลา Check In","เวลา Check Out","เวลารวมทำงาน","เวลาจัดบูธ"];
+const lines=[headers.join(",")];
+list.forEach(e=>{
+let hours=null;
+if(e.checkIn&&e.checkOut&&e.checkOut>e.checkIn)hours=(e.checkOut-e.checkIn)/3600000;
+const gps=(e.checkInLat&&e.checkInLng)?(Number(e.checkInLat).toFixed(5)+", "+Number(e.checkInLng).toFixed(5)):"-";
+const cells=[e.date,e.name||"",e.nickname||"",e.employee_code,
+e.checkInBooth||(e.booths.size?Array.from(e.booths).join(" / "):"-"),
+gps,e.checkInAccuracy||"-",e.checkInGpsStatus,
+e.checkIn?e.checkIn.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-",
+e.checkOut?e.checkOut.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-",
+e.isLeave?"-":formatHours(hours),
+e.boothSetupTime?e.boothSetupTime.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-"];
+lines.push(cells.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(","));
+});
+downloadCSV(lines.join("\r\n"),"peko_boli_detail_report_");
 }
 
 function downloadCSV(csvBody,filenamePrefix){
