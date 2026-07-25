@@ -86,6 +86,12 @@ a.imglink{color:var(--brand)}
 <div class="card" id="boothLocCard" style="display:none">
   <label style="margin-bottom:4px">ตั้งค่าตำแหน่ง GPS จริงของแต่ละบูธ</label>
   <div class="hint" style="margin-top:0">ใช้เทียบกับ GPS ตอนเช็คอิน เพื่อคำนวณคอลัมน์ "สถานะ GPS" ในรายงานละเอียด — กรอกละติจูด/ลองจิจูดจริงของบูธแล้วกดบันทึกทีละบูธ</div>
+  <div class="hint" style="margin-top:0;margin-bottom:14px">ตารางนี้จะโชว์เฉพาะบูธที่เคยมีคนเช็คอินแล้ว หรือบูธที่เคยบันทึกพิกัดไว้แล้ว ถ้าเป็นบูธใหม่ที่ยังไม่มีใครเช็คอิน ให้เพิ่มด้วยแบบฟอร์มด้านล่างนี้ก่อน</div>
+  <div class="btn-row" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+    <input type="text" id="newBoothCode" placeholder="รหัสบูธ เช่น CTW01" style="flex:1;min-width:120px;padding:9px 12px;border:1px solid var(--line);border-radius:8px">
+    <input type="text" id="newBoothName" placeholder="ชื่อบูธ เช่น สามย่านชั้น G" style="flex:2;min-width:160px;padding:9px 12px;border:1px solid var(--line);border-radius:8px">
+    <button class="small" onclick="addManualBooth()">+ เพิ่มบูธใหม่</button>
+  </div>
   <div class="tbl-wrap" style="max-height:320px">
     <table>
       <thead><tr><th>รหัสบูธ</th><th>ชื่อบูธ</th><th>ละติจูด</th><th>ลองจิจูด</th><th>รัศมีที่ยอมรับ(ม.)</th><th></th></tr></thead>
@@ -155,6 +161,7 @@ document.getElementById("adminKey").value=localStorage.getItem(KEYKEY)||"";
 let allRows=[];
 let currentView="raw";
 let boothLocations={};
+let manualBooths=[];
 
 function setView(v){
 currentView=v;
@@ -287,7 +294,25 @@ const code=r.booth_code||"";
 if(!code)return;
 if(!map[code])map[code]={code:code,name:r.booth_name||code};
 });
+Object.keys(boothLocations).forEach(function(code){
+if(!map[code])map[code]={code:code,name:boothLocations[code].name||code};
+});
+manualBooths.forEach(function(b){
+if(!map[b.code])map[b.code]={code:b.code,name:b.name};
+});
 return Object.values(map).sort((a,b)=>a.code.localeCompare(b.code));
+}
+
+function addManualBooth(){
+const codeInput=document.getElementById("newBoothCode");
+const nameInput=document.getElementById("newBoothName");
+const code=codeInput.value.trim();
+const name=nameInput.value.trim();
+if(!code||!name){alert("กรุณากรอกทั้งรหัสบูธและชื่อบูธ");return;}
+manualBooths=manualBooths.filter(function(b){return b.code!==code;});
+manualBooths.push({code:code,name:name});
+codeInput.value="";nameInput.value="";
+renderBoothLocationEditor();
 }
 
 function renderBoothLocationEditor(){
