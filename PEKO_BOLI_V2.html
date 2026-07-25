@@ -618,6 +618,9 @@ button:active:not(:disabled){transform:scale(.98)}
           สแกน QR
         </button>
       </div>
+		<select id="a-booth-select" style="width:100%;padding:11px 13px;border:1.5px solid var(--line);border-radius:10px;font-size:14px;margin-top:8px;font-family:inherit;background:#fff">
+  <option value="">-- หรือเลือกบูธจากรายการ --</option>
+</select>
       <div class="manual-toggle" onclick="toggleManual('a')">พิมพ์รหัสบูธเอง (ถ้าไม่มี QR)</div>
       <input id="a-booth-manual" type="text" placeholder="พิมพ์รหัส/ชื่อบูธ" style="display:none;margin-top:8px">
     </div>
@@ -987,6 +990,13 @@ renderProfileUI(profile);
 const cur=loadCurrentBooth();
 if(cur){boothState.a=cur;updateBoothLabel("a");}
 prefillBoothSetup();
+	if (action === "list_booths_public") {
+    const map = getBoothLocationsMap();
+    const booths = Object.keys(map).map(function (code) {
+      return { code: code, name: map[code].name || code };
+    }).sort(function (a, b) { return a.code.localeCompare(b.code); });
+    return jsonResponse({ result: "success", booths: booths });
+  }
 initLeaveDateMin();
 }else{
 document.getElementById("regScreen").style.display="flex";
@@ -1046,7 +1056,36 @@ input.value=cur.name;
 boothState.b={code:cur.code,name:cur.name,manual:false};
 }
 }
-
+async function loadBoothDropdown(){
+const select=document.getElementById("a-booth-select");
+if(!select||!WEBAPP_URL.startsWith("http"))return;
+try{
+const sep=WEBAPP_URL.includes("?")?"&":"?";
+const res=await fetch(WEBAPP_URL+sep+"action=list_booths_public");
+const data=await res.json();
+if(data.result!=="success")return;
+const booths=data.booths||[];
+select.innerHTML="<option value=''>-- หรือเลือกบูธจากรายการ --</option>";
+booths.forEach(function(b){
+const opt=document.createElement("option");
+opt.value=b.code+"|"+b.name;
+opt.textContent=b.name+" ("+b.code+")";
+select.appendChild(opt);
+});
+}catch(e){}
+}
+(function initBoothSelectA(){
+const select=document.getElementById("a-booth-select");
+if(!select)return;
+select.onchange=function(){
+if(!select.value)return;
+const parts=select.value.split("|");
+boothState.a={code:parts[0],name:parts[1]||parts[0],manual:false};
+updateBoothLabel("a");
+const manual=document.getElementById("a-booth-manual");
+if(manual){manual.value="";manual.style.display="none";}
+};
+})();
 function toggleManual(prefix){
 const input=document.getElementById(prefix+"-booth-manual");
 input.style.display=input.style.display==="none"?"block":"none";
