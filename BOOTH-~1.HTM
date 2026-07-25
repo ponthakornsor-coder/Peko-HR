@@ -259,8 +259,11 @@ header h1{margin:0;font-size:18px}
 header p{margin:4px 0 0;font-size:13px;color:rgba(255,255,255,.8)}
 .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px -12px rgba(15,23,42,.12);margin-bottom:16px}
 label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px}
-input[type=text]{width:100%;padding:11px 13px;border:1.5px solid var(--line);border-radius:10px;font-size:14px;margin-bottom:14px;font-family:inherit}
-input[type=text]:focus{outline:none;border-color:var(--brand)}
+input[type=text],input[type=password]{width:100%;padding:11px 13px;border:1.5px solid var(--line);border-radius:10px;font-size:14px;margin-bottom:14px;font-family:inherit}
+input[type=text]:focus,input[type=password]:focus{outline:none;border-color:var(--brand)}
+.status-msg{font-size:12.5px;margin-top:-8px;margin-bottom:14px}
+.status-msg.err{color:#b91c1c}
+.status-msg.ok{color:#0f766e}
 button{padding:12px 18px;border:none;border-radius:10px;background:var(--brand);color:#fff;font-weight:700;font-size:14px;cursor:pointer}
 button.secondary{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
 .btn-row{display:flex;gap:10px;flex-wrap:wrap}
@@ -294,14 +297,26 @@ button.secondary{background:#fff;color:var(--ink);border:1.5px solid var(--line)
 </header>
 
 <div class="card no-print">
+  <label>URL Web App (Apps Script)</label>
+  <input id="webappUrl" type="text" placeholder="https://script.google.com/macros/s/.../exec">
+  <label>รหัสผ่านแอดมิน (ADMIN_KEY ใน Code.gs)</label>
+  <input id="adminKey" type="password" placeholder="รหัสผ่านที่ตั้งไว้ใน Code.gs">
+  <div class="btn-row">
+    <button onclick="loadBoothsFromSheet()">โหลดรายชื่อบูธจาก Google Sheet</button>
+  </div>
+  <div id="loadMsg" class="status-msg"></div>
+</div>
+
+<div class="card no-print">
   <label>ชื่อบูธ / สถานที่</label>
   <input id="boothName" type="text" placeholder="เช่น เซ็นทรัลเวิลด์ ชั้น 1">
   <label>รหัสบูธ (ไม่บังคับ ระบบสร้างให้อัตโนมัติถ้าเว้นว่าง)</label>
   <input id="boothCode" type="text" placeholder="เช่น CTW01">
   <div class="btn-row">
-    <button onclick="addBooth()">+ เพิ่มบูธนี้</button>
+    <button onclick="addBooth()">+ เพิ่มบูธนี้ (บันทึกลง Google Sheet)</button>
     <button class="secondary" onclick="window.print()">พิมพ์ QR ทั้งหมด</button>
   </div>
+  <div class="hint" style="font-size:11.5px;color:#94a3b8;margin-top:-8px">บูธที่เพิ่มที่นี่จะถูกบันทึกลง Google Sheet ทันที (แท็บ BoothLocations) ยังไม่มีพิกัด GPS — ไปกรอกพิกัดจริงต่อที่หน้าสรุปข้อมูล HR (มุมมอง "รายงานละเอียด")</div>
 </div>
 
 <div class="card no-print" id="listCard" style="display:none">
@@ -312,37 +327,99 @@ button.secondary{background:#fff;color:var(--ink);border:1.5px solid var(--line)
 
 </div>
 <script>
-const STORAGE_KEY="peko_boli_booth_registry";
+// ไม่เก็บรายชื่อบูธในเครื่อง (localStorage) อีกต่อไป — ข้อมูลบูธทั้งหมดอยู่บน Google Sheet
+// (แท็บ BoothLocations) เท่านั้น เก็บแค่ URL Web App / รหัสผ่าน เป็นค่าตั้งค่าไว้ให้กรอกครั้งเดียว
+const URLKEY="peko_boli_qr_webapp_url";
+const KEYKEY="peko_boli_qr_admin_key";
+document.getElementById("webappUrl").value=localStorage.getItem(URLKEY)||"";
+document.getElementById("adminKey").value=localStorage.getItem(KEYKEY)||"";
 
-function loadBooths(){ try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");}catch(e){return [];} }
-function saveBooths(list){ localStorage.setItem(STORAGE_KEY,JSON.stringify(list)); }
+let boothsList=[];
+
+function getConfig(){
+return {
+url:document.getElementById("webappUrl").value.trim(),
+key:document.getElementById("adminKey").value.trim()
+};
+}
 
 function genCode(name){
 return "B"+name.replace(/[^a-zA-Zก-๙0-9]/g,"").slice(0,3).toUpperCase()+Math.floor(Math.random()*90+10);
 }
 
-function addBooth(){
+async function loadBoothsFromSheet(){
+const {url,key}=getConfig();
+const msg=document.getElementById("loadMsg");
+if(!url){msg.textContent="กรุณากรอก URL Web App";msg.className="status-msg err";return;}
+localStorage.setItem(URLKEY,url);
+localStorage.setItem(KEYKEY,key);
+msg.textContent="กำลังโหลด...";msg.className="status-msg";
+try{
+const sep=url.includes("?")?"&":"?";
+const res=await fetch(url+sep+"action=list_booth_locations&key="+encodeURIComponent(key));
+const data=await res.json();
+if(data.result!=="success"){
+msg.textContent="โหลดไม่สำเร็จ: "+(data.message||"ไม่ทราบสาเหตุ");
+msg.className="status-msg err";
+return;
+}
+const locations=data.locations||{};
+boothsList=Object.keys(locations).map(function(code){
+return {code:code,name:locations[code].name||code};
+}).sort((a,b)=>a.code.localeCompare(b.code));
+msg.textContent="โหลดสำเร็จ "+boothsList.length+" บูธ";
+msg.className="status-msg ok";
+renderAll();
+}catch(err){
+msg.textContent="เกิดข้อผิดพลาด: "+err.message;
+msg.className="status-msg err";
+}
+}
+
+async function addBooth(){
+const {url,key}=getConfig();
+if(!url){alert("กรุณากรอก URL Web App แล้วกด \"โหลดรายชื่อบูธจาก Google Sheet\" ก่อน");return;}
 const nameInput=document.getElementById("boothName");
 const codeInput=document.getElementById("boothCode");
 const name=nameInput.value.trim();
 if(!name){alert("กรุณากรอกชื่อบูธ");nameInput.focus();return;}
 const code=codeInput.value.trim()||genCode(name);
-const list=loadBooths();
-list.push({code,name});
-saveBooths(list);
+try{
+const res=await fetch(url,{
+method:"POST",
+headers:{"Content-Type":"text/plain;charset=utf-8"},
+body:JSON.stringify({action:"set_booth_location",key:key,booth_code:code,booth_name:name,lat:"",lng:"",radius_m:150})
+});
+const data=await res.json();
+if(data.result!=="success")throw new Error(data.message||"บันทึกไม่สำเร็จ");
 nameInput.value="";codeInput.value="";
-renderAll();
+await loadBoothsFromSheet();
+}catch(e){
+alert("บันทึกไม่สำเร็จ: "+e.message);
+}
 }
 
-function removeBooth(idx){
-const list=loadBooths();
-list.splice(idx,1);
-saveBooths(list);
-renderAll();
+async function removeBooth(idx){
+const {url,key}=getConfig();
+const b=boothsList[idx];
+if(!b)return;
+if(!confirm("ลบบูธ \""+b.name+"\" ออกจาก Google Sheet ใช่ไหม?"))return;
+try{
+const res=await fetch(url,{
+method:"POST",
+headers:{"Content-Type":"text/plain;charset=utf-8"},
+body:JSON.stringify({action:"delete_booth_location",key:key,booth_code:b.code})
+});
+const data=await res.json();
+if(data.result!=="success")throw new Error(data.message||"ลบไม่สำเร็จ");
+await loadBoothsFromSheet();
+}catch(e){
+alert("ลบไม่สำเร็จ: "+e.message);
+}
 }
 
 function renderAll(){
-const list=loadBooths();
+const list=boothsList;
 const listCard=document.getElementById("listCard");
 const boothList=document.getElementById("boothList");
 const signs=document.getElementById("signs");
@@ -373,7 +450,7 @@ text:"BOOTH:"+b.code+":"+b.name,width:200,height:200,correctLevel:QRCode.Correct
 });
 }
 
-renderAll();
+if(document.getElementById("webappUrl").value.trim()){loadBoothsFromSheet();}
 </script>
 </body>
 </html>
