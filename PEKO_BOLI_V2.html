@@ -3,6 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- กันมือถือพนักงานแคชหน้านี้ค้างไว้ (ปัญหาที่เจอบ่อยตอนอัปเดตไฟล์แล้วเครื่องพนักงานไม่เห็นของใหม่) -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>PEKO & BOLI</title>
 <script>
 /* QRCode.js (davidshimjs) - ฝังไว้ในไฟล์โดยตรง ไม่ต้องพึ่งอินเทอร์เน็ต/CDN ภายนอก
@@ -618,10 +622,10 @@ button:active:not(:disabled){transform:scale(.98)}
           สแกน QR
         </button>
       </div>
-		<select id="a-booth-select" style="width:100%;padding:11px 13px;border:1.5px solid var(--line);border-radius:10px;font-size:14px;margin-top:8px;font-family:inherit;background:#fff">
-  <option value="">-- หรือเลือกบูธจากรายการ --</option>
-</select>
-      <div class="manual-toggle" onclick="toggleManual('a')">พิมพ์รหัสบูธเอง (ถ้าไม่มี QR)</div>
+      <select id="a-booth-select" style="width:100%;padding:11px 13px;border:1.5px solid var(--line);border-radius:10px;font-size:14px;margin-top:8px;font-family:inherit;background:#fff">
+        <option value="">-- หรือเลือกบูธจากรายการ --</option>
+      </select>
+      <div class="manual-toggle" onclick="toggleManual('a')">พิมพ์รหัสบูธเอง (ถ้าไม่มี QR/ไม่มีในรายการ)</div>
       <input id="a-booth-manual" type="text" placeholder="พิมพ์รหัส/ชื่อบูธ" style="display:none;margin-top:8px">
     </div>
 
@@ -795,24 +799,49 @@ function setButtons(prefix,disabled){
 document.querySelectorAll("button[id^='"+prefix+"btn']").forEach(b=>b.disabled=disabled);
 }
 
-function compressImage(file,maxDim){
-maxDim=maxDim||MAX_DIMENSION;
-return new Promise((resolve,reject)=>{
-const img=new Image();
-const reader=new FileReader();
-reader.onload=e=>{ img.onload=()=>{
-let w=img.width,h=img.height;
+function drawToJpeg(source,srcW,srcH,maxDim){
+let w=srcW,h=srcH;
 if(w>h && w>maxDim){h=Math.round(h*maxDim/w);w=maxDim;}
 else if(h>maxDim){w=Math.round(w*maxDim/h);h=maxDim;}
 const canvas=document.createElement("canvas");
 canvas.width=w;canvas.height=h;
-canvas.getContext("2d").drawImage(img,0,0,w,h);
-resolve(canvas.toDataURL("image/jpeg",JPEG_QUALITY));
+canvas.getContext("2d").drawImage(source,0,0,w,h);
+return canvas.toDataURL("image/jpeg",JPEG_QUALITY);
+}
+
+// บีบอัดรูปก่อนอัปโหลด — พยายามใช้ createImageBitmap ก่อน (กินหน่วยความจำน้อยกว่ามาก
+// เหมาะกับรูปความละเอียดสูงจากมือถือกล้องดี ที่เคยทำให้บางเครื่องขึ้น "อ่านไฟล์ไม่สำเร็จ"
+// เพราะวิธีเดิมต้องแปลงไฟล์เต็มเป็น base64 ก่อนถึงจะย่อได้ ถ้าไฟล์ใหญ่มากบางเครื่องความจำไม่พอ)
+// ถ้าเบราว์เซอร์ไม่รองรับ ค่อย fallback ไปวิธีเดิม (FileReader + Image)
+function compressImage(file,maxDim){
+maxDim=maxDim||MAX_DIMENSION;
+if(window.createImageBitmap){
+return createImageBitmap(file).then(bitmap=>{
+try{
+return drawToJpeg(bitmap,bitmap.width,bitmap.height,maxDim);
+}finally{
+if(bitmap.close)bitmap.close();
+}
+}).catch(()=>compressImageLegacy(file,maxDim));
+}
+return compressImageLegacy(file,maxDim);
+}
+
+function compressImageLegacy(file,maxDim){
+return new Promise((resolve,reject)=>{
+const img=new Image();
+const reader=new FileReader();
+reader.onload=e=>{ img.onload=()=>{
+try{
+resolve(drawToJpeg(img,img.width,img.height,maxDim));
+}catch(err){
+reject(new Error("ประมวลผลรูปภาพไม่สำเร็จ (ไฟล์อาจใหญ่เกินไปสำหรับเครื่องนี้ ลองถ่ายรูปใหม่ที่ความละเอียดต่ำกว่านี้)"));
+}
 };
-img.onerror=()=>reject(new Error("ไม่สามารถอ่านรูปภาพได้"));
+img.onerror=()=>reject(new Error("ไม่สามารถอ่านรูปภาพได้ (ไฟล์อาจเสียหายหรือไม่ใช่รูปภาพ)"));
 img.src=e.target.result;
 };
-reader.onerror=()=>reject(new Error("อ่านไฟล์ไม่สำเร็จ"));
+reader.onerror=()=>reject(new Error("อ่านไฟล์ไม่สำเร็จ (ไฟล์อาจใหญ่เกินไปสำหรับหน่วยความจำเครื่องนี้ ลองถ่ายรูปใหม่ที่ความละเอียดต่ำกว่านี้ หรือเลือกรูปจากคลังภาพแทนกล้อง)"));
 reader.readAsDataURL(file);
 });
 }
@@ -990,14 +1019,8 @@ renderProfileUI(profile);
 const cur=loadCurrentBooth();
 if(cur){boothState.a=cur;updateBoothLabel("a");}
 prefillBoothSetup();
-	if (action === "list_booths_public") {
-    const map = getBoothLocationsMap();
-    const booths = Object.keys(map).map(function (code) {
-      return { code: code, name: map[code].name || code };
-    }).sort(function (a, b) { return a.code.localeCompare(b.code); });
-    return jsonResponse({ result: "success", booths: booths });
-  }
 initLeaveDateMin();
+loadBoothDropdown();
 }else{
 document.getElementById("regScreen").style.display="flex";
 document.getElementById("appRoot").style.display="none";
@@ -1056,6 +1079,9 @@ input.value=cur.name;
 boothState.b={code:cur.code,name:cur.name,manual:false};
 }
 }
+
+// โหลดรายชื่อบูธจาก Google Sheet (BoothLocations) มาทำเป็น dropdown ให้เลือกแทนการสแกน/พิมพ์เอง
+// ใช้ endpoint สาธารณะที่ไม่ต้องใช้รหัสผ่านแอดมิน (ส่งแค่รหัส+ชื่อบูธ ไม่ส่งพิกัด GPS)
 async function loadBoothDropdown(){
 const select=document.getElementById("a-booth-select");
 if(!select||!WEBAPP_URL.startsWith("http"))return;
@@ -1072,8 +1098,11 @@ opt.value=b.code+"|"+b.name;
 opt.textContent=b.name+" ("+b.code+")";
 select.appendChild(opt);
 });
-}catch(e){}
+}catch(e){
+// โหลดไม่ได้ก็ไม่เป็นไร ยังสแกน QR หรือพิมพ์เองได้ตามปกติ
 }
+}
+
 (function initBoothSelectA(){
 const select=document.getElementById("a-booth-select");
 if(!select)return;
@@ -1086,6 +1115,7 @@ const manual=document.getElementById("a-booth-manual");
 if(manual){manual.value="";manual.style.display="none";}
 };
 })();
+
 function toggleManual(prefix){
 const input=document.getElementById(prefix+"-booth-manual");
 input.style.display=input.style.display==="none"?"block":"none";
