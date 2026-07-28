@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -344,23 +343,46 @@ function genCode(name){
 return "EMP"+Date.now().toString(36).toUpperCase().slice(-5)+Math.random().toString(36).slice(2,4).toUpperCase();
 }
 
-// บีบอัดรูปให้เล็กที่สุดเท่าที่ยังพอมองออก ก่อนฝังเป็น base64 ในลิงก์/QR
-function compressPhoto(file,maxDim,quality){
-return new Promise((resolve,reject)=>{
-const img=new Image();
-const reader=new FileReader();
-reader.onload=e=>{ img.src=e.target.result; };
-reader.onerror=reject;
-img.onload=()=>{
-let w=img.width,h=img.height;
+function drawPhotoToJpeg(source,srcW,srcH,maxDim,quality){
+let w=srcW,h=srcH;
 if(w>h){ if(w>maxDim){h=Math.round(h*maxDim/w);w=maxDim;} }
 else{ if(h>maxDim){w=Math.round(w*maxDim/h);h=maxDim;} }
 const canvas=document.createElement("canvas");
 canvas.width=w;canvas.height=h;
-canvas.getContext("2d").drawImage(img,0,0,w,h);
-resolve(canvas.toDataURL("image/jpeg",quality));
+canvas.getContext("2d").drawImage(source,0,0,w,h);
+return canvas.toDataURL("image/jpeg",quality);
+}
+
+// บีบอัดรูปให้เล็กที่สุดเท่าที่ยังพอมองออก ก่อนฝังเป็น base64 ในลิงก์/QR
+// ใช้ createImageBitmap ก่อนถ้าเบราว์เซอร์รองรับ (กินหน่วยความจำน้อยกว่า FileReader+Image มาก
+// แก้ปัญหารูปความละเอียดสูงจากมือถือบางรุ่นทำให้ขึ้น "อ่านไฟล์ไม่สำเร็จ") ถ้าไม่รองรับค่อย fallback วิธีเดิม
+function compressPhoto(file,maxDim,quality){
+if(window.createImageBitmap){
+return createImageBitmap(file).then(bitmap=>{
+try{
+return drawPhotoToJpeg(bitmap,bitmap.width,bitmap.height,maxDim,quality);
+}finally{
+if(bitmap.close)bitmap.close();
+}
+}).catch(()=>compressPhotoLegacy(file,maxDim,quality));
+}
+return compressPhotoLegacy(file,maxDim,quality);
+}
+
+function compressPhotoLegacy(file,maxDim,quality){
+return new Promise((resolve,reject)=>{
+const img=new Image();
+const reader=new FileReader();
+reader.onload=e=>{ img.src=e.target.result; };
+reader.onerror=()=>reject(new Error("อ่านไฟล์ไม่สำเร็จ (ไฟล์อาจใหญ่เกินไป ลองเลือกรูปที่ความละเอียดต่ำกว่านี้)"));
+img.onload=()=>{
+try{
+resolve(drawPhotoToJpeg(img,img.width,img.height,maxDim,quality));
+}catch(err){
+reject(new Error("ประมวลผลรูปภาพไม่สำเร็จ"));
+}
 };
-img.onerror=reject;
+img.onerror=()=>reject(new Error("ไม่สามารถอ่านรูปภาพได้ (ไฟล์อาจเสียหายหรือไม่ใช่รูปภาพ)"));
 reader.readAsDataURL(file);
 });
 }
