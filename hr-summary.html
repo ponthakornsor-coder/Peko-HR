@@ -86,6 +86,7 @@ a.imglink{color:var(--brand)}
 <div class="card" id="boothLocCard" style="display:none">
   <label style="margin-bottom:4px">ตั้งค่าตำแหน่ง GPS จริงของแต่ละบูธ</label>
   <div class="hint" style="margin-top:0">ใช้เทียบกับ GPS ตอนเช็คอิน เพื่อคำนวณคอลัมน์ "สถานะ GPS" ในรายงานละเอียด — กรอกละติจูด/ลองจิจูดจริงของบูธแล้วกดบันทึกทีละบูธ</div>
+  <div class="hint" style="margin-top:0">ช่อง "LINE Group ID" (ไม่บังคับ) — ถ้ากรอกไว้ การเช็คอิน/ออกงาน/จัดบูธของบูธนั้นจะแจ้งเตือนเข้ากลุ่ม LINE นี้แทนกลุ่มหลัก เหมาะกับเวลาเปิดหลายสาขาแล้วอยากแยกกลุ่มแจ้งเตือนกันคนละกลุ่ม ถ้าเว้นว่างไว้จะใช้กลุ่มหลักตามปกติ</div>
   <div class="hint" style="margin-top:0;margin-bottom:14px">ตารางนี้จะโชว์เฉพาะบูธที่เคยมีคนเช็คอินแล้ว หรือบูธที่เคยบันทึกพิกัดไว้แล้ว ถ้าเป็นบูธใหม่ที่ยังไม่มีใครเช็คอิน ให้เพิ่มด้วยแบบฟอร์มด้านล่างนี้ก่อน</div>
   <div class="btn-row" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
     <input type="text" id="newBoothCode" placeholder="รหัสบูธ เช่น CTW01" style="flex:1;min-width:120px;padding:9px 12px;border:1px solid var(--line);border-radius:8px">
@@ -94,7 +95,7 @@ a.imglink{color:var(--brand)}
   </div>
   <div class="tbl-wrap" style="max-height:320px">
     <table>
-      <thead><tr><th>รหัสบูธ</th><th>ชื่อบูธ</th><th>ละติจูด</th><th>ลองจิจูด</th><th>รัศมีที่ยอมรับ(ม.)</th><th></th></tr></thead>
+      <thead><tr><th>รหัสบูธ</th><th>ชื่อบูธ</th><th>ละติจูด</th><th>ลองจิจูด</th><th>รัศมีที่ยอมรับ(ม.)</th><th>LINE Group ID</th><th></th></tr></thead>
       <tbody id="boothLocTbody"></tbody>
     </table>
   </div>
@@ -320,7 +321,7 @@ const tbody=document.getElementById("boothLocTbody");
 const booths=collectKnownBooths();
 tbody.innerHTML="";
 if(booths.length===0){
-tbody.innerHTML="<tr><td colspan='6'><div class='empty-state'>ยังไม่พบบูธในข้อมูล</div></td></tr>";
+tbody.innerHTML="<tr><td colspan='7'><div class='empty-state'>ยังไม่พบบูธในข้อมูล</div></td></tr>";
 return;
 }
 booths.forEach(function(b){
@@ -330,6 +331,7 @@ tr.innerHTML="<td>"+b.code+"</td><td>"+b.name+"</td>"
 +"<td><input type='text' id='loc-lat-"+b.code+"' value='"+(existing.lat!=null&&!isNaN(existing.lat)?existing.lat:"")+"' style='width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:6px' placeholder='13.7563'></td>"
 +"<td><input type='text' id='loc-lng-"+b.code+"' value='"+(existing.lng!=null&&!isNaN(existing.lng)?existing.lng:"")+"' style='width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:6px' placeholder='100.5018'></td>"
 +"<td><input type='text' id='loc-radius-"+b.code+"' value='"+(existing.radius_m||150)+"' style='width:70px;padding:6px 8px;border:1px solid var(--line);border-radius:6px'></td>"
++"<td><input type='text' id='loc-group-"+b.code+"' value='"+(existing.group_id||"")+"' style='width:170px;padding:6px 8px;border:1px solid var(--line);border-radius:6px' placeholder='ว่าง = ใช้กลุ่มหลัก'></td>"
 +"<td><button class='small' onclick='saveBoothLocation(\""+b.code.replace(/"/g,'\\"')+"\",\""+b.name.replace(/"/g,'\\"')+"\")'>บันทึก</button></td>";
 tbody.appendChild(tr);
 });
@@ -341,16 +343,17 @@ const key=document.getElementById("adminKey").value.trim();
 const lat=parseFloat(document.getElementById("loc-lat-"+code).value);
 const lng=parseFloat(document.getElementById("loc-lng-"+code).value);
 const radius=parseFloat(document.getElementById("loc-radius-"+code).value)||150;
+const groupId=document.getElementById("loc-group-"+code).value.trim();
 if(isNaN(lat)||isNaN(lng)){alert("กรุณากรอกละติจูด/ลองจิจูดเป็นตัวเลข");return;}
 try{
 const res=await fetch(url,{
 method:"POST",
 headers:{"Content-Type":"text/plain;charset=utf-8"},
-body:JSON.stringify({action:"set_booth_location",key:key,booth_code:code,booth_name:name,lat:lat,lng:lng,radius_m:radius})
+body:JSON.stringify({action:"set_booth_location",key:key,booth_code:code,booth_name:name,lat:lat,lng:lng,radius_m:radius,group_id:groupId})
 });
 const data=await res.json();
 if(data.result!=="success")throw new Error(data.message||"บันทึกไม่สำเร็จ");
-boothLocations[code]={name:name,lat:lat,lng:lng,radius_m:radius};
+boothLocations[code]={name:name,lat:lat,lng:lng,radius_m:radius,group_id:groupId};
 alert("บันทึกตำแหน่งบูธ \""+name+"\" แล้ว — กด \"โหลดข้อมูล\" อีกครั้งเพื่อให้สถานะ GPS อัปเดตตามตำแหน่งใหม่");
 }catch(e){
 alert("บันทึกไม่สำเร็จ: "+e.message);
