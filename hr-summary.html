@@ -17,11 +17,17 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
 .hint{font-size:11.5px;color:#94a3b8;margin:-8px 0 14px}
 .row{display:flex;gap:14px;flex-wrap:wrap}
 .row>div{flex:1;min-width:160px}
-input[type=text],input[type=date],input[type=password]{width:100%;padding:11px 13px;border:1.5px solid var(--line);border-radius:10px;font-size:14px;margin-bottom:14px;font-family:inherit}
-input:focus{outline:none;border-color:var(--brand)}
+input[type=text],input[type=date],input[type=password],input[type=datetime-local],select{width:100%;padding:11px 13px;border:1.5px solid var(--line);border-radius:10px;font-size:14px;margin-bottom:14px;font-family:inherit;background:#fff}
+input:focus,select:focus{outline:none;border-color:var(--brand)}
 button{padding:12px 18px;border:none;border-radius:10px;background:var(--brand);color:#fff;font-weight:700;font-size:14px;cursor:pointer}
 button.secondary{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
+button.small{padding:6px 10px;font-size:12px;border-radius:8px}
+button.danger{background:#b91c1c}
 .btn-row{display:flex;gap:10px;flex-wrap:wrap}
+.row-actions{display:flex;gap:6px}
+.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal-box{background:#fff;border-radius:14px;padding:22px;max-width:480px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px -20px rgba(15,23,42,.4)}
+.modal-box h3{margin:0 0 16px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
 th{background:#f8fafc;position:sticky;top:0;font-size:12px;color:var(--ink-soft)}
@@ -104,12 +110,16 @@ a.imglink{color:var(--brand)}
 <div class="card" id="resultCard" style="display:none">
   <div class="summary-bar" id="summaryBar"></div>
 
+  <div class="btn-row" id="rawEditBar" style="margin-bottom:12px">
+    <button class="secondary" onclick="openAddModal()">+ เพิ่มรายการย้อนหลัง (ลืมลงเวลา/เน็ตมีปัญหา)</button>
+  </div>
+
   <div class="tbl-wrap" id="rawWrap">
     <table>
       <thead>
         <tr>
           <th>วันที่-เวลา</th><th>ประเภท</th><th>ชื่อ</th><th>ชื่อเล่น</th><th>รหัสพนักงาน</th>
-          <th>บูธ</th><th>พิกัด GPS</th><th>ความแม่นยำ(ม.)</th><th>รูปภาพ</th>
+          <th>บูธ</th><th>พิกัด GPS</th><th>ความแม่นยำ(ม.)</th><th>รูปภาพ</th><th>จัดการ</th>
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
@@ -153,6 +163,78 @@ a.imglink{color:var(--brand)}
 </div>
 </div>
 
+<div id="logModalOverlay" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <h3 id="logModalTitle">แก้ไขรายการ</h3>
+    <div id="modalTypeRow">
+      <label>ประเภท</label>
+      <select id="m-type" onchange="setModalTypeFields()">
+        <option value="Check In">Check In (เข้างาน)</option>
+        <option value="Check Out">Check Out (ออกงาน)</option>
+        <option value="Booth Setup">Booth Setup (จัดบูธ)</option>
+        <option value="Leave">Leave (แจ้งลา)</option>
+      </select>
+    </div>
+    <div class="row">
+      <div>
+        <label>ชื่อ</label>
+        <input type="text" id="m-name">
+      </div>
+      <div>
+        <label>ชื่อเล่น</label>
+        <input type="text" id="m-nickname">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>รหัสพนักงาน</label>
+        <input type="text" id="m-employee-code">
+      </div>
+    </div>
+    <div id="m-timeGroup">
+      <label>วันที่-เวลา</label>
+      <input type="datetime-local" id="m-datetime">
+    </div>
+    <div id="m-boothGroup" class="row">
+      <div>
+        <label>รหัสบูธ</label>
+        <input type="text" id="m-booth-code">
+      </div>
+      <div>
+        <label>ชื่อบูธ</label>
+        <input type="text" id="m-booth-name">
+      </div>
+    </div>
+    <div id="m-leaveGroup" style="display:none">
+      <div class="row">
+        <div>
+          <label>วันที่ลา</label>
+          <input type="date" id="m-leave-date">
+        </div>
+        <div>
+          <label>ถึงวันที่ลา (ถ้าลาหลายวัน)</label>
+          <input type="date" id="m-leave-date-to">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>เวลาเริ่มลา (ถ้าลาไม่เต็มวัน)</label>
+          <input type="text" id="m-leave-time-from" placeholder="เช่น 13:00">
+        </div>
+        <div>
+          <label>เวลาสิ้นสุดลา (ถ้าลาไม่เต็มวัน)</label>
+          <input type="text" id="m-leave-time-to" placeholder="เช่น 17:00">
+        </div>
+      </div>
+    </div>
+    <div id="modalMsg" class="status-msg"></div>
+    <div class="btn-row">
+      <button onclick="saveModal()">บันทึก</button>
+      <button class="secondary" onclick="closeModal()">ยกเลิก</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const URLKEY="peko_boli_hr_webapp_url";
 const KEYKEY="peko_boli_hr_admin_key";
@@ -167,6 +249,7 @@ let manualBooths=[];
 function setView(v){
 currentView=v;
 document.getElementById("rawWrap").style.display=(v==="raw")?"block":"none";
+document.getElementById("rawEditBar").style.display=(v==="raw")?"flex":"none";
 document.getElementById("dailyWrap").style.display=(v==="daily")?"block":"none";
 document.getElementById("detailWrap").style.display=(v==="detail")?"block":"none";
 document.getElementById("boothLocCard").style.display=(v==="detail")?"block":"none";
@@ -271,7 +354,7 @@ function renderRawTable(rows){
 const tbody=document.getElementById("tbody");
 tbody.innerHTML="";
 if(rows.length===0){
-tbody.innerHTML="<tr><td colspan='9'><div class='empty-state'>ไม่พบข้อมูลตามเงื่อนไขที่กรอง</div></td></tr>";
+tbody.innerHTML="<tr><td colspan='10'><div class='empty-state'>ไม่พบข้อมูลตามเงื่อนไขที่กรอง</div></td></tr>";
 return;
 }
 rows.forEach(r=>{
@@ -282,7 +365,9 @@ const booth=r.booth_name||r.booth_code||"-";
 const img=r.image_url?("<a class='imglink' href='"+r.image_url+"' target='_blank'>ดูรูป</a>"):"-";
 const tr=document.createElement("tr");
 tr.innerHTML="<td>"+dateTxt+"</td><td>"+(r.type||"")+"</td><td>"+(r.name||"")+"</td><td>"+(r.nickname||"-")+"</td>"
-+"<td>"+(r.employee_code||"")+"</td><td>"+booth+"</td><td>"+gps+"</td><td>"+(r.accuracy_m||"")+"</td><td>"+img+"</td>";
++"<td>"+(r.employee_code||"")+"</td><td>"+booth+"</td><td>"+gps+"</td><td>"+(r.accuracy_m||"")+"</td><td>"+img+"</td>"
++"<td><div class='row-actions'><button class='small secondary' onclick='openEditModal("+r.row_index+")'>แก้ไข</button>"
++"<button class='small danger' onclick='deleteLogRow("+r.row_index+")'>ลบ</button></div></td>";
 tbody.appendChild(tr);
 });
 }
@@ -357,6 +442,143 @@ boothLocations[code]={name:name,lat:lat,lng:lng,radius_m:radius,group_id:groupId
 alert("บันทึกตำแหน่งบูธ \""+name+"\" แล้ว — กด \"โหลดข้อมูล\" อีกครั้งเพื่อให้สถานะ GPS อัปเดตตามตำแหน่งใหม่");
 }catch(e){
 alert("บันทึกไม่สำเร็จ: "+e.message);
+}
+}
+
+// ===== แก้ไข/เพิ่ม/ลบรายการลงเวลา (แอดมินแก้ข้อมูลย้อนหลัง เช่น เน็ตมีปัญหา หรือพนักงานลืมลงเวลา) =====
+
+let modalMode="edit"; // "edit" หรือ "add"
+let modalRowIndex=null;
+
+function setModalTypeFields(){
+const type=document.getElementById("m-type").value;
+const isLeave=type==="Leave";
+document.getElementById("m-timeGroup").style.display=isLeave?"none":"block";
+document.getElementById("m-boothGroup").style.display=isLeave?"none":"flex";
+document.getElementById("m-leaveGroup").style.display=isLeave?"block":"none";
+}
+
+function isoToLocalInputValue(iso){
+const d=new Date(iso);
+if(isNaN(d))return "";
+const pad=n=>String(n).padStart(2,"0");
+return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+"T"+pad(d.getHours())+":"+pad(d.getMinutes());
+}
+
+function openEditModal(rowIndex){
+const row=(window._filteredRows||allRows).find(r=>r.row_index===rowIndex);
+if(!row){alert("ไม่พบรายการนี้ ลองกด \"โหลดข้อมูล\" ใหม่อีกครั้ง");return;}
+modalMode="edit";
+modalRowIndex=rowIndex;
+document.getElementById("logModalTitle").textContent="แก้ไขรายการ";
+document.getElementById("m-type").value=row.type||"Check In";
+document.getElementById("m-type").disabled=true; // ไม่ให้เปลี่ยนประเภทตอนแก้ไข ถ้าจะเปลี่ยนประเภทให้ลบรายการนี้แล้วเพิ่มใหม่แทน
+document.getElementById("m-name").value=row.name||"";
+document.getElementById("m-nickname").value=row.nickname||"";
+document.getElementById("m-employee-code").value=row.employee_code||"";
+document.getElementById("m-datetime").value=isoToLocalInputValue(row.time||row.server_time);
+document.getElementById("m-booth-code").value=row.booth_code||"";
+document.getElementById("m-booth-name").value=row.booth_name||"";
+document.getElementById("m-leave-date").value=row.leave_date||"";
+document.getElementById("m-leave-date-to").value=row.leave_date_to||"";
+document.getElementById("m-leave-time-from").value=row.leave_time_from||"";
+document.getElementById("m-leave-time-to").value=row.leave_time_to||"";
+document.getElementById("modalMsg").textContent="";
+setModalTypeFields();
+document.getElementById("logModalOverlay").style.display="flex";
+}
+
+function openAddModal(){
+modalMode="add";
+modalRowIndex=null;
+document.getElementById("logModalTitle").textContent="เพิ่มรายการย้อนหลัง";
+document.getElementById("m-type").disabled=false;
+document.getElementById("m-type").value="Check In";
+document.getElementById("m-name").value="";
+document.getElementById("m-nickname").value="";
+document.getElementById("m-employee-code").value="";
+document.getElementById("m-datetime").value=isoToLocalInputValue(new Date().toISOString());
+document.getElementById("m-booth-code").value="";
+document.getElementById("m-booth-name").value="";
+document.getElementById("m-leave-date").value="";
+document.getElementById("m-leave-date-to").value="";
+document.getElementById("m-leave-time-from").value="";
+document.getElementById("m-leave-time-to").value="";
+document.getElementById("modalMsg").textContent="";
+setModalTypeFields();
+document.getElementById("logModalOverlay").style.display="flex";
+}
+
+function closeModal(){
+document.getElementById("logModalOverlay").style.display="none";
+}
+
+async function saveModal(){
+const url=document.getElementById("webappUrl").value.trim();
+const key=document.getElementById("adminKey").value.trim();
+const type=document.getElementById("m-type").value;
+const isLeave=type==="Leave";
+const payload={
+key:key,
+type:type,
+name:document.getElementById("m-name").value.trim(),
+nickname:document.getElementById("m-nickname").value.trim(),
+employee_code:document.getElementById("m-employee-code").value.trim()
+};
+if(isLeave){
+payload.leave_date=document.getElementById("m-leave-date").value;
+payload.leave_date_to=document.getElementById("m-leave-date-to").value||payload.leave_date;
+payload.leave_time_from=document.getElementById("m-leave-time-from").value.trim();
+payload.leave_time_to=document.getElementById("m-leave-time-to").value.trim();
+payload.time="";
+payload.booth_code="";
+payload.booth_name="";
+}else{
+const dtVal=document.getElementById("m-datetime").value;
+if(!dtVal){alert("กรุณากรอกวันที่-เวลา");return;}
+payload.time=new Date(dtVal).toISOString();
+payload.booth_code=document.getElementById("m-booth-code").value.trim();
+payload.booth_name=document.getElementById("m-booth-name").value.trim();
+}
+const msg=document.getElementById("modalMsg");
+msg.textContent="กำลังบันทึก...";msg.className="status-msg";
+try{
+if(modalMode==="edit"){
+payload.action="update_log_entry";
+payload.row_index=modalRowIndex;
+}else{
+payload.action="add_log_entry";
+}
+const res=await fetch(url,{
+method:"POST",
+headers:{"Content-Type":"text/plain;charset=utf-8"},
+body:JSON.stringify(payload)
+});
+const data=await res.json();
+if(data.result!=="success")throw new Error(data.message||"บันทึกไม่สำเร็จ");
+closeModal();
+await loadData(); // โหลดข้อมูลใหม่ทั้งหมดจากชีต กันเลขแถวเพี้ยนหลังแก้ไข/เพิ่ม
+}catch(e){
+msg.textContent="บันทึกไม่สำเร็จ: "+e.message;
+msg.className="status-msg err";
+}
+}
+
+async function deleteLogRow(rowIndex){
+if(!confirm("ยืนยันลบรายการนี้? การลบไม่สามารถกู้คืนได้"))return;
+const url=document.getElementById("webappUrl").value.trim();
+const key=document.getElementById("adminKey").value.trim();
+try{
+const res=await fetch(url,{
+method:"POST",
+headers:{"Content-Type":"text/plain;charset=utf-8"},
+body:JSON.stringify({action:"delete_log_entry",key:key,row_index:rowIndex})
+});
+const data=await res.json();
+if(data.result!=="success")throw new Error(data.message||"ลบไม่สำเร็จ");
+await loadData();
+}catch(e){
+alert("ลบไม่สำเร็จ: "+e.message);
 }
 }
 
