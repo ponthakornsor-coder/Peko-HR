@@ -111,7 +111,8 @@ a.imglink{color:var(--brand)}
   <div class="summary-bar" id="summaryBar"></div>
 
   <div class="btn-row" id="rawEditBar" style="margin-bottom:12px">
-    <button class="secondary" onclick="openAddModal()">+ เพิ่มรายการย้อนหลัง (ลืมลงเวลา/เน็ตมีปัญหา)</button>
+    <button class="secondary" onclick="openAddModal('Check In')">+ เพิ่มรายการย้อนหลัง (ลืมลงเวลา/เน็ตมีปัญหา)</button>
+    <button class="secondary" onclick="openAddModal('Leave')">+ คีย์ลาให้พนักงาน</button>
   </div>
 
   <div class="tbl-wrap" id="rawWrap">
@@ -488,12 +489,12 @@ setModalTypeFields();
 document.getElementById("logModalOverlay").style.display="flex";
 }
 
-function openAddModal(){
+function openAddModal(defaultType){
 modalMode="add";
 modalRowIndex=null;
-document.getElementById("logModalTitle").textContent="เพิ่มรายการย้อนหลัง";
+document.getElementById("logModalTitle").textContent=(defaultType==="Leave")?"คีย์ลาให้พนักงาน":"เพิ่มรายการย้อนหลัง";
 document.getElementById("m-type").disabled=false;
-document.getElementById("m-type").value="Check In";
+document.getElementById("m-type").value=defaultType||"Check In";
 document.getElementById("m-name").value="";
 document.getElementById("m-nickname").value="";
 document.getElementById("m-employee-code").value="";
