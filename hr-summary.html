@@ -81,6 +81,10 @@ a.imglink{color:var(--brand)}
       <input id="fTo" type="date" oninput="renderTable()">
     </div>
   </div>
+  <div style="display:flex;align-items:center;gap:8px;margin:-6px 0 16px">
+    <input type="checkbox" id="fOnlyIncomplete" onchange="renderTable()" style="width:auto;margin:0">
+    <label style="margin:0" for="fOnlyIncomplete">แสดงเฉพาะวันที่ลืมลงเวลา (Check In หรือ Check Out ไม่ครบ)</label>
+  </div>
   <div class="btn-row">
     <button class="secondary" id="viewRawBtn" onclick="setView('raw')">รายการดิบ</button>
     <button class="secondary" id="viewDailyBtn" onclick="setView('daily')">สรุปรายวัน (เข้า-ออก-ชั่วโมง)</button>
@@ -336,16 +340,21 @@ return da-db;
 });
 
 renderRawTable(rows);
-const dayEntries=computeDailySummary(rows);
+const dayEntriesAll=computeDailySummary(rows);
+const isIncomplete=e=>!e.isLeave&&((e.checkIn&&!e.checkOut)||(!e.checkIn&&e.checkOut));
+const onlyIncomplete=document.getElementById("fOnlyIncomplete").checked;
+const dayEntries=onlyIncomplete?dayEntriesAll.filter(isIncomplete):dayEntriesAll;
 renderDailySummary(dayEntries);
 renderDetailReport(dayEntries);
-renderTotals(dayEntries);
+renderTotals(dayEntriesAll); // สรุปรวมต่อพนักงาน ใช้ข้อมูลทั้งหมดเสมอ ไม่ผูกกับตัวกรอง "เฉพาะที่ลืมลงเวลา"
 
 const uniqueEmp=new Set(rows.map(r=>r.employee_code||r.name)).size;
+const incompleteCount=dayEntriesAll.filter(isIncomplete).length;
 document.getElementById("summaryBar").innerHTML=
 "<div>รายการดิบทั้งหมด: <b>"+rows.length+"</b></div>"
 +"<div>จำนวนพนักงานที่พบ: <b>"+uniqueEmp+"</b></div>"
-+"<div>จำนวนวัน-คนที่มีข้อมูล: <b>"+dayEntries.length+"</b></div>";
++"<div>จำนวนวัน-คนที่มีข้อมูล: <b>"+dayEntriesAll.length+"</b></div>"
++"<div>⚠️ ลืมลงเวลา (Check In/Out ไม่ครบ): <b style='color:#b91c1c'>"+incompleteCount+"</b></div>";
 
 window._filteredRows=rows;
 window._dayEntries=dayEntries;
@@ -698,17 +707,18 @@ let hours=null;
 if(e.checkIn&&e.checkOut&&e.checkOut>e.checkIn){
 hours=(e.checkOut-e.checkIn)/3600000;
 }
-let status="-";
-if(e.isLeave)status=leaveDetailLabel(e);
-else if(e.checkIn&&!e.checkOut)status="ยังไม่ออกงาน";
-else if(e.checkIn&&e.checkOut)status="ปกติ";
+let status="-",statusColor="#94a3b8";
+if(e.isLeave){status=leaveDetailLabel(e);statusColor="#b45309";}
+else if(e.checkIn&&e.checkOut){status="ปกติ";statusColor="#0f766e";}
+else if(e.checkIn&&!e.checkOut){status="⚠️ ลืมออกงาน";statusColor="#b91c1c";}
+else if(!e.checkIn&&e.checkOut){status="⚠️ ลืมเข้างาน";statusColor="#b91c1c";}
 const tr=document.createElement("tr");
 tr.innerHTML="<td>"+e.date+"</td><td>"+(e.name||"")+"</td><td>"+(e.nickname||"-")+"</td><td>"+e.employee_code+"</td>"
 +"<td>"+(e.checkIn?e.checkIn.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-")+"</td>"
 +"<td>"+(e.checkOut?e.checkOut.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-")+"</td>"
 +"<td>"+(e.isLeave?"-":formatHours(hours))+"</td>"
 +"<td>"+(e.booths.size?Array.from(e.booths).join(", "):"-")+"</td>"
-+"<td>"+status+"</td>";
++"<td><span style='color:"+statusColor+";font-weight:600'>"+status+"</span></td>";
 tbody.appendChild(tr);
 });
 }
@@ -799,7 +809,12 @@ const lines=[headers.join(",")];
 list.forEach(e=>{
 let hours=null;
 if(e.checkIn&&e.checkOut&&e.checkOut>e.checkIn)hours=(e.checkOut-e.checkIn)/3600000;
-let status=e.isLeave?leaveDetailLabel(e):(e.checkIn&&!e.checkOut?"ยังไม่ออกงาน":(e.checkIn&&e.checkOut?"ปกติ":"-"));
+let status;
+if(e.isLeave)status=leaveDetailLabel(e);
+else if(e.checkIn&&e.checkOut)status="ปกติ";
+else if(e.checkIn&&!e.checkOut)status="ลืมออกงาน";
+else if(!e.checkIn&&e.checkOut)status="ลืมเข้างาน";
+else status="-";
 const cells=[e.date,e.name||"",e.nickname||"",e.employee_code,
 e.checkIn?e.checkIn.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-",
 e.checkOut?e.checkOut.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-",
