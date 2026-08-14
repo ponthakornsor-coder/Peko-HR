@@ -81,9 +81,16 @@ a.imglink{color:var(--brand)}
       <input id="fTo" type="date" oninput="renderTable()">
     </div>
   </div>
-  <div style="display:flex;align-items:center;gap:8px;margin:-6px 0 16px">
-    <input type="checkbox" id="fOnlyIncomplete" onchange="renderTable()" style="width:auto;margin:0">
-    <label style="margin:0" for="fOnlyIncomplete">แสดงเฉพาะวันที่ลืมลงเวลา (Check In หรือ Check Out ไม่ครบ)</label>
+  <div style="max-width:280px">
+    <label>กรองตามสถานะ</label>
+    <select id="fStatus" onchange="renderTable()">
+      <option value="all">ทั้งหมด</option>
+      <option value="normal">ปกติ (เข้า-ออกครบ)</option>
+      <option value="incomplete">⚠️ ลืมลงเวลา (ทุกกรณี)</option>
+      <option value="missing_checkout">⚠️ ลืมออกงาน</option>
+      <option value="missing_checkin">⚠️ ลืมเข้างาน</option>
+      <option value="leave">ลา</option>
+    </select>
   </div>
   <div class="btn-row">
     <button class="secondary" id="viewRawBtn" onclick="setView('raw')">รายการดิบ</button>
@@ -374,11 +381,21 @@ return da-db;
 renderRawTable(rows);
 const dayEntriesAll=computeDailySummary(rows);
 const isIncomplete=e=>!e.isLeave&&((e.checkIn&&!e.checkOut)||(!e.checkIn&&e.checkOut));
-const onlyIncomplete=document.getElementById("fOnlyIncomplete").checked;
-const dayEntries=onlyIncomplete?dayEntriesAll.filter(isIncomplete):dayEntriesAll;
+const statusFilter=document.getElementById("fStatus").value;
+const matchesStatus=e=>{
+if(statusFilter==="all")return true;
+if(statusFilter==="leave")return e.isLeave;
+if(e.isLeave)return false;
+if(statusFilter==="normal")return !!(e.checkIn&&e.checkOut);
+if(statusFilter==="missing_checkout")return !!(e.checkIn&&!e.checkOut);
+if(statusFilter==="missing_checkin")return !!(!e.checkIn&&e.checkOut);
+if(statusFilter==="incomplete")return isIncomplete(e);
+return true;
+};
+const dayEntries=dayEntriesAll.filter(matchesStatus);
 renderDailySummary(dayEntries);
 renderDetailReport(dayEntries);
-renderTotals(dayEntriesAll); // สรุปรวมต่อพนักงาน ใช้ข้อมูลทั้งหมดเสมอ ไม่ผูกกับตัวกรอง "เฉพาะที่ลืมลงเวลา"
+renderTotals(dayEntriesAll); // สรุปรวมต่อพนักงาน ใช้ข้อมูลทั้งหมดเสมอ ไม่ผูกกับตัวกรองสถานะ
 
 const uniqueEmp=new Set(rows.map(r=>r.employee_code||r.name)).size;
 const incompleteCount=dayEntriesAll.filter(isIncomplete).length;
