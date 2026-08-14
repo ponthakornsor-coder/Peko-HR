@@ -136,7 +136,7 @@ a.imglink{color:var(--brand)}
       <thead>
         <tr>
           <th>วันที่</th><th>ชื่อ</th><th>ชื่อเล่น</th><th>รหัสพนักงาน</th>
-          <th>เข้างาน</th><th>ออกงาน</th><th>รวมชั่วโมง</th><th>บูธที่เกี่ยวข้อง</th><th>สถานะ</th>
+          <th>เข้างาน</th><th>ออกงาน</th><th>รวมชั่วโมง</th><th>บูธที่เกี่ยวข้อง</th><th>สถานะ</th><th>จัดการ</th>
         </tr>
       </thead>
       <tbody id="dailyTbody"></tbody>
@@ -240,6 +240,38 @@ a.imglink{color:var(--brand)}
   </div>
 </div>
 
+<div id="dayModalOverlay" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <h3 id="dayModalTitle">แก้ไขเวลาเข้า-ออกงาน</h3>
+    <div class="hint" style="margin-top:0">เว้นว่างช่องไหนไว้ = ลบเวลานั้นทิ้ง (เช่น เข้างานผิดคน) ถ้ายังไม่เคยมีข้อมูลแล้วกรอกใหม่ = เพิ่มรายการนั้นให้</div>
+    <div class="row">
+      <div>
+        <label>เวลาเข้างาน</label>
+        <input type="datetime-local" id="d-checkin">
+      </div>
+      <div>
+        <label>เวลาออกงาน</label>
+        <input type="datetime-local" id="d-checkout">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>รหัสบูธ</label>
+        <input type="text" id="d-booth-code">
+      </div>
+      <div>
+        <label>ชื่อบูธ</label>
+        <input type="text" id="d-booth-name">
+      </div>
+    </div>
+    <div id="dayModalMsg" class="status-msg"></div>
+    <div class="btn-row">
+      <button onclick="saveDayModal()">บันทึก</button>
+      <button class="secondary" onclick="closeDayModal()">ยกเลิก</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const URLKEY="peko_boli_hr_webapp_url";
 const KEYKEY="peko_boli_hr_admin_key";
@@ -295,7 +327,7 @@ const locRes=await fetch(url+sep+"action=list_booth_locations&key="+encodeURICom
 const locData=await locRes.json();
 if(locData.result==="success")boothLocations=locData.locations||{};
 }catch(e){}
-setView("raw");
+setView(currentView||"raw"); // คงมุมมองเดิมไว้ (เช่น ถ้าเพิ่งแก้ไขจากแท็บ "สรุปรายวัน" โหลดใหม่แล้วก็ยังอยู่แท็บเดิม)
 }catch(err){
 msg.textContent="เกิดข้อผิดพลาด: "+err.message+" (ตรวจสอบ URL และการเชื่อมต่ออินเทอร์เน็ต)";
 msg.className="status-msg err";
@@ -574,6 +606,79 @@ msg.className="status-msg err";
 }
 }
 
+// ===== แก้ไขเวลาเข้า-ออกงานตรงจากตาราง "สรุปรายวัน" (สะดวกกว่าไปหาแถวในรายการดิบเอง) =====
+
+async function postAction(payload){
+const url=document.getElementById("webappUrl").value.trim();
+const res=await fetch(url,{
+method:"POST",
+headers:{"Content-Type":"text/plain;charset=utf-8"},
+body:JSON.stringify(payload)
+});
+const data=await res.json();
+if(data.result!=="success")throw new Error(data.message||"บันทึกไม่สำเร็จ");
+return data;
+}
+
+let dayEditContext=null;
+
+function openDayEditModal(idx){
+const e=(window._dailyList||[])[idx];
+if(!e){alert("ไม่พบรายการนี้ ลองกด \"โหลดข้อมูล\" ใหม่อีกครั้ง");return;}
+if(e.isLeave){alert("รายการนี้เป็นวันลา แก้ไขได้ที่แท็บ \"รายการดิบ\" แทนครับ");return;}
+dayEditContext=e;
+document.getElementById("dayModalTitle").textContent="แก้ไขเวลาเข้า-ออกงาน — "+(e.name||e.employee_code)+" ("+e.date+")";
+document.getElementById("d-checkin").value=e.checkIn?isoToLocalInputValue(e.checkIn.toISOString()):"";
+document.getElementById("d-checkout").value=e.checkOut?isoToLocalInputValue(e.checkOut.toISOString()):"";
+document.getElementById("d-booth-code").value=e.checkInBoothCode||"";
+document.getElementById("d-booth-name").value=e.checkInBooth||"";
+document.getElementById("dayModalMsg").textContent="";
+document.getElementById("dayModalOverlay").style.display="flex";
+}
+
+function closeDayModal(){
+document.getElementById("dayModalOverlay").style.display="none";
+}
+
+async function saveDayModal(){
+const e=dayEditContext;
+if(!e)return;
+const key=document.getElementById("adminKey").value.trim();
+const boothCode=document.getElementById("d-booth-code").value.trim();
+const boothName=document.getElementById("d-booth-name").value.trim();
+const ciVal=document.getElementById("d-checkin").value;
+const coVal=document.getElementById("d-checkout").value;
+const msg=document.getElementById("dayModalMsg");
+msg.textContent="กำลังบันทึก...";msg.className="status-msg";
+try{
+if(ciVal){
+const newIso=new Date(ciVal).toISOString();
+if(e.checkInRowIndex){
+await postAction({action:"update_log_entry",key:key,row_index:e.checkInRowIndex,time:newIso,booth_code:boothCode,booth_name:boothName});
+}else{
+await postAction({action:"add_log_entry",key:key,type:"Check In",name:e.name,nickname:e.nickname,employee_code:e.employee_code,time:newIso,booth_code:boothCode,booth_name:boothName});
+}
+}else if(e.checkInRowIndex){
+await postAction({action:"delete_log_entry",key:key,row_index:e.checkInRowIndex});
+}
+if(coVal){
+const newIso=new Date(coVal).toISOString();
+if(e.checkOutRowIndex){
+await postAction({action:"update_log_entry",key:key,row_index:e.checkOutRowIndex,time:newIso,booth_code:boothCode,booth_name:boothName});
+}else{
+await postAction({action:"add_log_entry",key:key,type:"Check Out",name:e.name,nickname:e.nickname,employee_code:e.employee_code,time:newIso,booth_code:boothCode,booth_name:boothName});
+}
+}else if(e.checkOutRowIndex){
+await postAction({action:"delete_log_entry",key:key,row_index:e.checkOutRowIndex});
+}
+closeDayModal();
+await loadData();
+}catch(err){
+msg.textContent="บันทึกไม่สำเร็จ: "+err.message;
+msg.className="status-msg err";
+}
+}
+
 async function deleteLogRow(rowIndex){
 if(!confirm("ยืนยันลบรายการนี้? การลบไม่สามารถกู้คืนได้"))return;
 const url=document.getElementById("webappUrl").value.trim();
@@ -634,7 +739,8 @@ function getEntry(code,date,name,nickname){
 const key=code+"|"+date;
 if(!map[key]){
 map[key]={employee_code:code,date:date,name:name,nickname:nickname,checkIn:null,checkOut:null,booths:new Set(),isLeave:false,leaveTimeFrom:"",leaveTimeTo:"",
-checkInLat:null,checkInLng:null,checkInAccuracy:null,checkInGpsStatus:"-",checkInBooth:"",boothSetupTime:null};
+checkInLat:null,checkInLng:null,checkInAccuracy:null,checkInGpsStatus:"-",checkInBooth:"",checkInBoothCode:"",boothSetupTime:null,
+checkInRowIndex:null,checkOutRowIndex:null};
 }
 return map[key];
 }
@@ -649,14 +755,19 @@ const entry=getEntry(code,date,r.name,r.nickname);
 if(r.type==="Check In"){
 if(!entry.checkIn||d<entry.checkIn){
 entry.checkIn=d;
+entry.checkInRowIndex=r.row_index;
 entry.checkInLat=r.lat||null;
 entry.checkInLng=r.lng||null;
 entry.checkInAccuracy=r.accuracy_m||null;
 entry.checkInGpsStatus=r.gps_status||"-";
 entry.checkInBooth=r.booth_name||r.booth_code||"";
+entry.checkInBoothCode=r.booth_code||"";
 }
 }else if(r.type==="Check Out"){
-if(!entry.checkOut||d>entry.checkOut)entry.checkOut=d;
+if(!entry.checkOut||d>entry.checkOut){
+entry.checkOut=d;
+entry.checkOutRowIndex=r.row_index;
+}
 }else if(r.type==="Booth Setup"){
 if(!entry.boothSetupTime||d<entry.boothSetupTime)entry.boothSetupTime=d;
 }
@@ -698,11 +809,12 @@ return list;
 function renderDailySummary(list){
 const tbody=document.getElementById("dailyTbody");
 tbody.innerHTML="";
+window._dailyList=list;
 if(list.length===0){
-tbody.innerHTML="<tr><td colspan='9'><div class='empty-state'>ไม่พบข้อมูลตามเงื่อนไขที่กรอง</div></td></tr>";
+tbody.innerHTML="<tr><td colspan='10'><div class='empty-state'>ไม่พบข้อมูลตามเงื่อนไขที่กรอง</div></td></tr>";
 return;
 }
-list.forEach(e=>{
+list.forEach((e,idx)=>{
 let hours=null;
 if(e.checkIn&&e.checkOut&&e.checkOut>e.checkIn){
 hours=(e.checkOut-e.checkIn)/3600000;
@@ -718,7 +830,8 @@ tr.innerHTML="<td>"+e.date+"</td><td>"+(e.name||"")+"</td><td>"+(e.nickname||"-"
 +"<td>"+(e.checkOut?e.checkOut.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-")+"</td>"
 +"<td>"+(e.isLeave?"-":formatHours(hours))+"</td>"
 +"<td>"+(e.booths.size?Array.from(e.booths).join(", "):"-")+"</td>"
-+"<td><span style='color:"+statusColor+";font-weight:600'>"+status+"</span></td>";
++"<td><span style='color:"+statusColor+";font-weight:600'>"+status+"</span></td>"
++"<td>"+(e.isLeave?"-":"<button class='small secondary' onclick='openDayEditModal("+idx+")'>แก้ไข</button>")+"</td>";
 tbody.appendChild(tr);
 });
 }
