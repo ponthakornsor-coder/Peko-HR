@@ -90,6 +90,7 @@ a.imglink{color:var(--brand)}
       <option value="missing_checkout">⚠️ ลืมออกงาน</option>
       <option value="missing_checkin">⚠️ ลืมเข้างาน</option>
       <option value="leave">ลา</option>
+      <option value="dayoff">วันหยุด</option>
     </select>
   </div>
   <div class="btn-row">
@@ -124,6 +125,7 @@ a.imglink{color:var(--brand)}
   <div class="btn-row" id="rawEditBar" style="margin-bottom:12px">
     <button class="secondary" onclick="openAddModal('Check In')">+ เพิ่มรายการย้อนหลัง (ลืมลงเวลา/เน็ตมีปัญหา)</button>
     <button class="secondary" onclick="openAddModal('Leave')">+ คีย์ลาให้พนักงาน</button>
+    <button class="secondary" onclick="openAddModal('Day Off')">+ เพิ่มวันหยุดให้พนักงาน</button>
   </div>
 
   <div class="tbl-wrap" id="rawWrap">
@@ -167,7 +169,7 @@ a.imglink{color:var(--brand)}
     <label style="margin-bottom:10px">สรุปรวมต่อพนักงาน (ตามช่วงที่กรองอยู่)</label>
     <div class="tbl-wrap" style="max-height:300px">
       <table>
-        <thead><tr><th>ชื่อ</th><th>ชื่อเล่น</th><th>รหัสพนักงาน</th><th>จำนวนวันที่มาทำงาน</th><th>รวมชั่วโมงทั้งหมด</th><th>จำนวนวันลา</th></tr></thead>
+        <thead><tr><th>ชื่อ</th><th>ชื่อเล่น</th><th>รหัสพนักงาน</th><th>จำนวนวันที่มาทำงาน</th><th>รวมชั่วโมงทั้งหมด</th><th>จำนวนวันลา</th><th>จำนวนวันหยุด</th></tr></thead>
         <tbody id="totalsTbody"></tbody>
       </table>
     </div>
@@ -185,6 +187,7 @@ a.imglink{color:var(--brand)}
         <option value="Check Out">Check Out (ออกงาน)</option>
         <option value="Booth Setup">Booth Setup (จัดบูธ)</option>
         <option value="Leave">Leave (แจ้งลา)</option>
+        <option value="Day Off">Day Off (วันหยุด)</option>
       </select>
     </div>
     <div class="row">
@@ -380,12 +383,13 @@ return da-db;
 
 renderRawTable(rows);
 const dayEntriesAll=computeDailySummary(rows);
-const isIncomplete=e=>!e.isLeave&&((e.checkIn&&!e.checkOut)||(!e.checkIn&&e.checkOut));
+const isIncomplete=e=>!e.isLeave&&!e.isDayOff&&((e.checkIn&&!e.checkOut)||(!e.checkIn&&e.checkOut));
 const statusFilter=document.getElementById("fStatus").value;
 const matchesStatus=e=>{
 if(statusFilter==="all")return true;
-if(statusFilter==="leave")return e.isLeave;
-if(e.isLeave)return false;
+if(statusFilter==="dayoff")return !!e.isDayOff;
+if(statusFilter==="leave")return !!e.isLeave&&!e.isDayOff;
+if(e.isLeave||e.isDayOff)return false;
 if(statusFilter==="normal")return !!(e.checkIn&&e.checkOut);
 if(statusFilter==="missing_checkout")return !!(e.checkIn&&!e.checkOut);
 if(statusFilter==="missing_checkin")return !!(!e.checkIn&&e.checkOut);
@@ -511,10 +515,10 @@ let modalRowIndex=null;
 
 function setModalTypeFields(){
 const type=document.getElementById("m-type").value;
-const isLeave=type==="Leave";
-document.getElementById("m-timeGroup").style.display=isLeave?"none":"block";
-document.getElementById("m-boothGroup").style.display=isLeave?"none":"flex";
-document.getElementById("m-leaveGroup").style.display=isLeave?"block":"none";
+const isLeaveLike=(type==="Leave"||type==="Day Off");
+document.getElementById("m-timeGroup").style.display=isLeaveLike?"none":"block";
+document.getElementById("m-boothGroup").style.display=isLeaveLike?"none":"flex";
+document.getElementById("m-leaveGroup").style.display=isLeaveLike?"block":"none";
 }
 
 function isoToLocalInputValue(iso){
@@ -550,7 +554,7 @@ document.getElementById("logModalOverlay").style.display="flex";
 function openAddModal(defaultType){
 modalMode="add";
 modalRowIndex=null;
-document.getElementById("logModalTitle").textContent=(defaultType==="Leave")?"คีย์ลาให้พนักงาน":"เพิ่มรายการย้อนหลัง";
+document.getElementById("logModalTitle").textContent=(defaultType==="Leave")?"คีย์ลาให้พนักงาน":(defaultType==="Day Off")?"เพิ่มวันหยุดให้พนักงาน":"เพิ่มรายการย้อนหลัง";
 document.getElementById("m-type").disabled=false;
 document.getElementById("m-type").value=defaultType||"Check In";
 document.getElementById("m-name").value="";
@@ -576,7 +580,7 @@ async function saveModal(){
 const url=document.getElementById("webappUrl").value.trim();
 const key=document.getElementById("adminKey").value.trim();
 const type=document.getElementById("m-type").value;
-const isLeave=type==="Leave";
+const isLeave=(type==="Leave"||type==="Day Off");
 const payload={
 key:key,
 type:type,
@@ -642,7 +646,7 @@ let dayEditContext=null;
 function openDayEditModal(idx){
 const e=(window._dailyList||[])[idx];
 if(!e){alert("ไม่พบรายการนี้ ลองกด \"โหลดข้อมูล\" ใหม่อีกครั้ง");return;}
-if(e.isLeave){alert("รายการนี้เป็นวันลา แก้ไขได้ที่แท็บ \"รายการดิบ\" แทนครับ");return;}
+if(e.isLeave||e.isDayOff){alert("รายการนี้เป็นวันลา/วันหยุด แก้ไขได้ที่แท็บ \"รายการดิบ\" แทนครับ");return;}
 dayEditContext=e;
 document.getElementById("dayModalTitle").textContent="แก้ไขเวลาเข้า-ออกงาน — "+(e.name||e.employee_code)+" ("+e.date+")";
 document.getElementById("d-checkin").value=e.checkIn?isoToLocalInputValue(e.checkIn.toISOString()):"";
@@ -755,7 +759,7 @@ const map={}; // key: code|date
 function getEntry(code,date,name,nickname){
 const key=code+"|"+date;
 if(!map[key]){
-map[key]={employee_code:code,date:date,name:name,nickname:nickname,checkIn:null,checkOut:null,booths:new Set(),isLeave:false,leaveTimeFrom:"",leaveTimeTo:"",
+map[key]={employee_code:code,date:date,name:name,nickname:nickname,checkIn:null,checkOut:null,booths:new Set(),isLeave:false,isDayOff:false,leaveTimeFrom:"",leaveTimeTo:"",
 checkInLat:null,checkInLng:null,checkInAccuracy:null,checkInGpsStatus:"-",checkInBooth:"",checkInBoothCode:"",boothSetupTime:null,
 checkInRowIndex:null,checkOutRowIndex:null};
 }
@@ -793,9 +797,9 @@ if(boothLabel)entry.booths.add(boothLabel);
 }
 });
 
-// ขยายวันลาจาก leave_date ถึง leave_date_to ใส่เป็นรายวัน
+// ขยายวันลา/วันหยุด จาก leave_date ถึง leave_date_to ใส่เป็นรายวัน (ใช้คอลัมน์เดียวกันทั้งสองประเภท)
 rows.forEach(r=>{
-if(r.type!=="Leave")return;
+if(r.type!=="Leave"&&r.type!=="Day Off")return;
 const code=r.employee_code||r.name||"-";
 let cur=r.leave_date||"";
 const end=r.leave_date_to||r.leave_date||"";
@@ -803,10 +807,14 @@ if(!cur)return;
 let guard=0;
 while(cur && cur<=end && guard<366){
 const entry=getEntry(code,cur,r.name,r.nickname);
+if(r.type==="Day Off"){
+entry.isDayOff=true;
+}else{
 entry.isLeave=true;
 if(r.leave_time_from||r.leave_time_to){
 entry.leaveTimeFrom=r.leave_time_from||"";
 entry.leaveTimeTo=r.leave_time_to||"";
+}
 }
 if(cur===end)break;
 cur=addDaysToDateStr(cur,1);
@@ -837,7 +845,8 @@ if(e.checkIn&&e.checkOut&&e.checkOut>e.checkIn){
 hours=(e.checkOut-e.checkIn)/3600000;
 }
 let status="-",statusColor="#94a3b8";
-if(e.isLeave){status=leaveDetailLabel(e);statusColor="#b45309";}
+if(e.isDayOff){status="วันหยุด";statusColor="#64748b";}
+else if(e.isLeave){status=leaveDetailLabel(e);statusColor="#b45309";}
 else if(e.checkIn&&e.checkOut){status="ปกติ";statusColor="#0f766e";}
 else if(e.checkIn&&!e.checkOut){status="⚠️ ลืมออกงาน";statusColor="#b91c1c";}
 else if(!e.checkIn&&e.checkOut){status="⚠️ ลืมเข้างาน";statusColor="#b91c1c";}
@@ -845,10 +854,10 @@ const tr=document.createElement("tr");
 tr.innerHTML="<td>"+e.date+"</td><td>"+(e.name||"")+"</td><td>"+(e.nickname||"-")+"</td><td>"+e.employee_code+"</td>"
 +"<td>"+(e.checkIn?e.checkIn.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-")+"</td>"
 +"<td>"+(e.checkOut?e.checkOut.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-")+"</td>"
-+"<td>"+(e.isLeave?"-":formatHours(hours))+"</td>"
++"<td>"+((e.isLeave||e.isDayOff)?"-":formatHours(hours))+"</td>"
 +"<td>"+(e.booths.size?Array.from(e.booths).join(", "):"-")+"</td>"
 +"<td><span style='color:"+statusColor+";font-weight:600'>"+status+"</span></td>"
-+"<td>"+(e.isLeave?"-":"<button class='small secondary' onclick='openDayEditModal("+idx+")'>แก้ไข</button>")+"</td>";
++"<td>"+((e.isLeave||e.isDayOff)?"-":"<button class='small secondary' onclick='openDayEditModal("+idx+")'>แก้ไข</button>")+"</td>";
 tbody.appendChild(tr);
 });
 }
@@ -875,7 +884,7 @@ tr.innerHTML="<td>"+e.date+"</td><td>"+(e.name||"")+"</td><td>"+(e.nickname||"-"
 +"<td><span style='color:"+statusColor+";font-weight:600'>"+e.checkInGpsStatus+"</span></td>"
 +"<td>"+(e.checkIn?e.checkIn.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-")+"</td>"
 +"<td>"+(e.checkOut?e.checkOut.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-")+"</td>"
-+"<td>"+(e.isLeave?"-":formatHours(hours))+"</td>"
++"<td>"+((e.isLeave||e.isDayOff)?"-":formatHours(hours))+"</td>"
 +"<td>"+(e.boothSetupTime?e.boothSetupTime.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-")+"</td>";
 tbody.appendChild(tr);
 });
@@ -885,7 +894,8 @@ function renderTotals(list){
 const totals={}; // key: code
 list.forEach(e=>{
 const key=e.employee_code;
-if(!totals[key])totals[key]={name:e.name,nickname:e.nickname,employee_code:e.employee_code,days:0,hours:0,leaveDays:0};
+if(!totals[key])totals[key]={name:e.name,nickname:e.nickname,employee_code:e.employee_code,days:0,hours:0,leaveDays:0,dayOffDays:0};
+if(e.isDayOff){totals[key].dayOffDays++;return;}
 if(e.isLeave){totals[key].leaveDays++;return;}
 if(e.checkIn&&e.checkOut&&e.checkOut>e.checkIn){
 totals[key].days++;
@@ -898,13 +908,13 @@ const tbody=document.getElementById("totalsTbody");
 tbody.innerHTML="";
 const arr=Object.values(totals).sort((a,b)=>(a.name||"").localeCompare(b.name||""));
 if(arr.length===0){
-tbody.innerHTML="<tr><td colspan='6'><div class='empty-state'>ไม่มีข้อมูล</div></td></tr>";
+tbody.innerHTML="<tr><td colspan='7'><div class='empty-state'>ไม่มีข้อมูล</div></td></tr>";
 return;
 }
 arr.forEach(t=>{
 const tr=document.createElement("tr");
 tr.innerHTML="<td>"+(t.name||"")+"</td><td>"+(t.nickname||"-")+"</td><td>"+t.employee_code+"</td>"
-+"<td>"+t.days+"</td><td>"+formatHours(t.hours)+"</td><td>"+t.leaveDays+"</td>";
++"<td>"+t.days+"</td><td>"+formatHours(t.hours)+"</td><td>"+t.leaveDays+"</td><td>"+t.dayOffDays+"</td>";
 tbody.appendChild(tr);
 });
 }
@@ -940,7 +950,8 @@ list.forEach(e=>{
 let hours=null;
 if(e.checkIn&&e.checkOut&&e.checkOut>e.checkIn)hours=(e.checkOut-e.checkIn)/3600000;
 let status;
-if(e.isLeave)status=leaveDetailLabel(e);
+if(e.isDayOff)status="วันหยุด";
+else if(e.isLeave)status=leaveDetailLabel(e);
 else if(e.checkIn&&e.checkOut)status="ปกติ";
 else if(e.checkIn&&!e.checkOut)status="ลืมออกงาน";
 else if(!e.checkIn&&e.checkOut)status="ลืมเข้างาน";
@@ -948,7 +959,7 @@ else status="-";
 const cells=[e.date,e.name||"",e.nickname||"",e.employee_code,
 e.checkIn?e.checkIn.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-",
 e.checkOut?e.checkOut.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-",
-e.isLeave?"-":formatHours(hours),
+(e.isLeave||e.isDayOff)?"-":formatHours(hours),
 e.booths.size?Array.from(e.booths).join(" / "):"-",
 status];
 lines.push(cells.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(","));
@@ -970,7 +981,7 @@ e.checkInBooth||(e.booths.size?Array.from(e.booths).join(" / "):"-"),
 gps,e.checkInAccuracy||"-",e.checkInGpsStatus,
 e.checkIn?e.checkIn.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-",
 e.checkOut?e.checkOut.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-",
-e.isLeave?"-":formatHours(hours),
+(e.isLeave||e.isDayOff)?"-":formatHours(hours),
 e.boothSetupTime?e.boothSetupTime.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}):"-"];
 lines.push(cells.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(","));
 });
